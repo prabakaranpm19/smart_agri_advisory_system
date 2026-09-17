@@ -1,0 +1,6 @@
+Maize|FoodCrop|Loamy;Black|SUMMER|MEDIUM|20.00|55.00|35.00|20.00|Coarse Cereal|22250.00|2800.00
+Paddy|FoodCrop|Clay;Loamy|SUMMER|HIGH|22.00|50.00|30.00|20.00|Cereal Grain|23000.00|3000.00
+Cotton|CashCrop|Black;Loamy|SUMMER|MEDIUM|10.00|45.00|25.00|15.00|Textile Fiber|71210.00|4500.00
+Watermelon|FoodCrop|Sandy|SPRING|LOW|150.00|40.00|20.00|30.00|Fruit|12000.00|6000.00
+Wheat|FoodCrop|Loamy;Clay|WINTER|MEDIUM|18.00|60.00|40.00|25.00|Cereal Grain|22750.00|2500.00
+Groundnut|CashCrop|Sandy;Loamy|SUMMER|LOW|8.00|15.00|30.00|20.00|Oilseed|67800.00|5000.00

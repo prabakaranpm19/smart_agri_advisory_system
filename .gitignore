@@ -1,0 +1,13 @@
+# Java compiled class files
+bin/
+*.class
+
+# IDE & OS files
+.idea/
+.vscode/
+*.swp
+*.DS_Store
+Thumbs.db
+
+# Database files
+crop_advisory.db
