@@ -21,7 +21,7 @@ import com.sun.net.httpserver.*;
  */
 public class CropAdvisoryApp {
 
-    private static final int PORT = 8080;
+    private static final int PORT = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
     private static CropService cropService;
     private static final Queue<String> weatherAlerts = new ConcurrentLinkedQueue<>();
     private static final int MAX_WEATHER_ALERTS = 20;
