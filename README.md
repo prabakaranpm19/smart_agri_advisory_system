@@ -1,70 +1,232 @@
-# Farmer Crop Advisory Web Application
+# Smart Crop Advisory & Resource Management System (Tamil Nadu Edition)
 
-A Core Java web application that assists farmers by analyzing agricultural factors (soil profile, growth season, water access), calculating suitability ratings for multiple crops, scaling yield and NPK fertilizer requirements, applying small-holder subsidies, and simulating canal water demands.
-
-The system replaces the console CLI with an embedded HTTP API backend and a premium Single Page Application (SPA) web frontend.
+A full-stack, personalized agricultural decision support and farm resource management web application built with **Core Java (JDK 17+)**, `com.sun.net.httpserver.HttpServer`, SQLite via JDBC (with automatic flat-file CSV fallback), and a glassmorphic single-page web interface.
 
 ---
 
-## Package and Directory Structure
+## 🌟 Architecture & Technology Stack
 
-The project has been cleaned up and consolidated into a highly structured, minimal footprint:
-
-```
-d:\pbl\java\
-  ├── README.md                 (This Documentation File)
-  ├── CropAdvisoryApp.java      (Single Core Java file containing models, services, exceptions, threads, and HttpServer)
-  ├── crop_advisory.db          (SQLite database accessed via JDBC)
-  ├── download_db_driver.ps1    (PowerShell script to fetch SQLite JDBC and logging dependencies)
-  ├── run.ps1                   (PowerShell script to compile into bin/ and launch the web server)
-  ├── crops.txt                 (Flat file database backup for crops)
-  ├── farmers.txt               (Flat file database backup for farmers)
-  ├── advisories.txt            (Flat file database backup for recommendation histories)
-  ├── bin/                      (Compiled Java .class files directory)
-  ├── lib/                      (Dependency jar files: sqlite-jdbc, slf4j-api, slf4j-simple)
-  └── web/                      (Web application frontend assets)
-        ├── index.html          (SPA Dashboard layout)
-        ├── style.css           (Premium glassmorphic dashboard styling)
-        └── app.js              (Frontend API connector and rendering engine)
-```
+- **Backend**: Single-file Core Java backend (`CropAdvisoryApp.java`) with zero framework dependencies.
+- **Networking & Server**: `com.sun.net.httpserver.HttpServer` with a fixed thread pool (`Executors.newFixedThreadPool(12)`).
+- **Authentication**: Salted SHA-256 password hashing with UUID session token management held in `ConcurrentHashMap`.
+- **Database Engine**: Dual-mode storage using SQLite via JDBC (`crop_advisory.db`) with automatic flat-file CSV fallback (`users.txt`, `farmers.txt`, `crops.txt`, `advisories.txt`).
+- **Telemetry**: Open-Meteo REST API integration for real-time Tamil Nadu district weather and background daemon alerts (`WeatherAlertDaemon extends Thread`).
+- **Frontend**: Vanilla HTML5, CSS3 (glassmorphic dark/light mode), and ES6 JavaScript SPA with Leaflet.js interactive maps and full English/Tamil/Hindi multilingual i18n support.
 
 ---
 
-## Prerequisites
-- Standard JDK (e.g., OpenJDK 11 or higher) must be installed.
-- PowerShell (to run automation scripts).
+## 🚀 Quick Start & Running
 
----
+### System Requirements
+- JDK 17 or higher (`javac` and `java` binaries in path).
+- Windows (PowerShell) or Linux/macOS (Bash).
 
-## Installation & Running
+### Launch Command
 
-### Step 1: Download Database Dependencies
-Create the `lib/` directory and download the SQLite JDBC driver and logging dependencies:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\download_db_driver.ps1
-```
-
-### Step 2: Compile & Start Web Server
-Compile `CropAdvisoryApp.java` into the `bin/` directory and start the web server on port `8080`:
+#### Windows (PowerShell):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run.ps1
 ```
 
-### Step 3: Open in Browser
-Open your web browser and navigate to:
+#### Linux / macOS (Bash):
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+Navigate in your browser to:
 👉 **http://localhost:8080**
 
 ---
 
-## Web API Endpoints
+## 🔑 Demo Credentials
 
-The backend server exposes the following REST API routes for frontend communication:
-- `GET /api/status` - Checks database engine type (JDBC vs CSV) and loaded record counts.
-- `GET /api/crops` - Retrieves all crops cataloged.
-- `POST /api/crops` - Inserts a new crop profile.
-- `GET /api/farmers` - Retrieves all registered farmers.
-- `POST /api/farmers` - Registers a new farmer.
-- `GET /api/farmers/{id}/history` - Fetches advisory logs for a specific farmer.
-- `POST /api/advisory` - Evaluates suitability ratings, calculates gross/net costs, and applies subsidies.
-- `POST /api/simulate-water` - Performs concurrent lock simulation of canal water allocations.
-- `GET /api/weather-alerts` - Retrieves real-time weather reports emitted by the background daemon thread.
+| Role | Username / Mobile | Security PIN | Access Privileges |
+|---|---|---|---|
+| **Demo Farmer** | `demo` | `1234` | Full personalized farmer dashboard, advisory, history, weather map, water simulation |
+| **Admin** | `admin` | `9999` | Admin panel (Crop catalog editing, all registered farmers view, system stats) |
+
+---
+
+## 🔄 End-to-End User Flow
+
+1. **Landing Page**:
+   - Displays application introduction, system feature grid, demo credential shortcuts, and language switcher (English / தமிழ் / हिंदी).
+   - No farmer data or advisories are exposed prior to authentication.
+2. **Sign Up**:
+   - Register with Full Name, Username / Mobile Number, 4-6 digit security PIN, and language preference.
+   - Security PIN is salted and hashed using SHA-256 before persistence.
+3. **Sign In**:
+   - Authenticate via Username + PIN. Generates an in-memory session token (UUID) with a 24-hour expiration window.
+   - Sent via `Authorization: Bearer <token>` header with every API request.
+4. **First-Time Farm Profile Setup**:
+   - Shown automatically if profile details are incomplete.
+   - Select Tamil Nadu district (dropdown of 15 districts with coordinates auto-fill), soil type (Red, Alluvial, Clay, Black, Loamy, Sandy), farm area in acres, water access level (Low / Medium / High), and primary irrigation source (Canal / Borewell / Rain-fed).
+   - Auto-categorizes land size: `acres <= 5.0` => **SmallFarmer** (30% NPK Subsidy), `acres > 5.0` => **LargeFarmer** (0% Subsidy).
+5. **Personal Dashboard**:
+   - Greeting by farmer's name, profile summary card, live Open-Meteo weather telemetry for farmer's district, district risk alerts, and quick action shortcuts.
+6. **Get Advisory**:
+   - Select cultivation season: Kuruvai (Summer / Kharif), Samba (Winter / Rabi), or Navarai (Spring / Zaid).
+   - Uses farmer's saved profile automatically and generates:
+     - Ranked crop list with suitability score out of 100 and compatibility reason per crop.
+     - Deep dive report for top recommended crop: expected yield, scaled urea/DAP/MOP requirements, gross cost, subsidy savings, net fertilizer cost, seed cost, labor cost, total input cost, gross revenue, net profit, and ROI %.
+     - Weather-aware advice notes (rain warnings, heatwave alerts, spraying advisories).
+     - Applicable Tamil Nadu and Central government subsidies/schemes.
+     - Automatically logs report to farmer's advisory history.
+7. **Advisory History**:
+   - View past advisory reports for the logged-in farmer. Click "View Report" to inspect full report card modal.
+8. **Weather Map**:
+   - Leaflet map centered on Tamil Nadu featuring 15 districts. Farmer's district is highlighted with a distinct marker pin.
+   - Click any district marker to inspect live Open-Meteo telemetry and 5-day forecast.
+9. **Alerts Board**:
+   - Live weather alert ticker and dedicated risk telemetry board prioritizing farmer's district.
+10. **Shared Water Allocation**:
+    - Interactive 5-thread Java concurrency simulation. 5 regional canal channels request 15 KL each from a 50 KL reservoir using `CountDownLatch` and `synchronized allocateIrrigation`. Exactly 3 succeed (45 KL) and 2 are denied.
+    - Output streamed into developer-console terminal panel.
+11. **Admin Panel**:
+    - Manage crop catalog, view list of all registered farmers, and view storage engine status.
+
+---
+
+## 📊 Database Schema
+
+### `users` Table
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PRIMARY KEY | User unique ID (`USR-...`) |
+| `username` | TEXT | UNIQUE, NOT NULL | Account login username or mobile |
+| `pin_hash` | TEXT | NOT NULL | Salted SHA-256 hash of PIN |
+| `salt` | TEXT | NOT NULL | Hex-encoded random salt |
+| `role` | TEXT | NOT NULL | Role (`FARMER` or `ADMIN`) |
+| `language` | TEXT | NOT NULL | Preferred UI language (`en`, `ta`, `hi`) |
+| `created_at` | INTEGER | NOT NULL | Epoch timestamp |
+
+### `farmers` Table
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PRIMARY KEY | Farmer profile ID (`FM-...`) |
+| `user_id` | TEXT | FOREIGN KEY | Linked `users.id` |
+| `name` | TEXT | NOT NULL | Farmer full name |
+| `type` | TEXT | NOT NULL | Farmer category (`Small` / `Large`) |
+| `size` | DOUBLE | NOT NULL | Land holdings in acres |
+| `soil` | TEXT | NOT NULL | Soil type (`RED`, `ALLUVIAL`, `CLAY`, `BLACK`, `LOAMY`, `SANDY`) |
+| `water` | TEXT | NOT NULL | Water access (`LOW`, `MEDIUM`, `HIGH`) |
+| `district` | TEXT | NOT NULL | Tamil Nadu district name |
+| `irrigation_source` | TEXT | NOT NULL | Canal, Borewell, or Rain-fed |
+| `location` | TEXT | NOT NULL | Location string |
+| `latitude` | DOUBLE | NOT NULL | Latitude coordinate |
+| `longitude` | DOUBLE | NOT NULL | Longitude coordinate |
+
+### `crops` Table
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `name` | TEXT | PRIMARY KEY | Crop name |
+| `type` | TEXT | NOT NULL | Crop classification (`FoodCrop` / `CashCrop`) |
+| `soils` | TEXT | NOT NULL | Suitable soil types (semicolon-separated) |
+| `season` | TEXT | NOT NULL | Ideal season (`SUMMER`, `WINTER`, `SPRING`) |
+| `water` | TEXT | NOT NULL | Required water level (`LOW`, `MEDIUM`, `HIGH`) |
+| `yield` | DOUBLE | NOT NULL | Expected yield per acre (Quintals/Tons) |
+| `urea` | DOUBLE | NOT NULL | Urea requirement per acre (Kg) |
+| `dap` | DOUBLE | NOT NULL | DAP requirement per acre (Kg) |
+| `mop` | DOUBLE | NOT NULL | MOP requirement per acre (Kg) |
+| `special` | TEXT | - | Food category or industry type |
+| `market_price` | DOUBLE | NOT NULL | Market price per unit (₹) |
+| `seed_cost` | DOUBLE | NOT NULL | Seed cost per acre (₹) |
+| `labor_cost` | DOUBLE | NOT NULL | Labor cost per acre (₹) |
+
+### `advisories` Table
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PRIMARY KEY | Recommendation ID (`ADV-...`) |
+| `farmer_id` | TEXT | NOT NULL | Target farmer ID |
+| `crop_name` | TEXT | NOT NULL | Recommended top crop |
+| `season` | TEXT | NOT NULL | Cultivation season |
+| `score` | INTEGER | NOT NULL | Suitability score (0-100) |
+| `yield` | DOUBLE | NOT NULL | Estimated total yield |
+| `gross_cost` | DOUBLE | NOT NULL | Gross fertilizer cost (₹) |
+| `net_cost` | DOUBLE | NOT NULL | Net fertilizer cost (₹) |
+| `revenue` | DOUBLE | NOT NULL | Projected gross revenue (₹) |
+| `profit` | DOUBLE | NOT NULL | Projected net profit (₹) |
+| `roi` | DOUBLE | NOT NULL | Projected ROI % |
+| `advice_notes` | TEXT | - | Weather and soil advice notes |
+| `rec_date` | INTEGER | NOT NULL | Recommendation timestamp |
+
+---
+
+## ⚙️ REST API Endpoints
+
+| Method | Endpoint | Auth Required | Description |
+|---|---|---|---|
+| `GET` | `/api/status` | Public | System status and storage engine info |
+| `GET` | `/api/districts` | Public | 15 Tamil Nadu districts metadata |
+| `POST` | `/api/auth/register` | Public | Register new user account |
+| `POST` | `/api/auth/login` | Public | Authenticate user and issue token |
+| `POST` | `/api/auth/logout` | Protected | Invalidate session token |
+| `GET` | `/api/me` | Protected | Fetch current user and farm profile |
+| `PUT` | `/api/me` | Protected | Save or update farm profile |
+| `POST` | `/api/advisory` | Protected | Generate advisory for logged-in farmer |
+| `GET` | `/api/advisories` | Protected | Advisory history for logged-in farmer |
+| `GET` | `/api/advisories/{id}` | Protected | Fetch single advisory report detail |
+| `GET` | `/api/weather` | Public | Fetch Open-Meteo telemetry for location/district |
+| `GET` | `/api/alerts` | Public | Fetch risk telemetry and weather alerts |
+| `POST` | `/api/water/simulate` | Protected | Run 5-thread canal water concurrency test |
+| `GET` | `/api/crops` | Protected | Retrieve crop catalog |
+| `POST` / `PUT` | `/api/crops` | Admin Only | Create or update crop entry |
+| `GET` | `/api/farmers` | Admin Only | List all registered farmers |
+
+Protected endpoints return HTTP status `401 Unauthorized` (`{"error":"..."}`) if `Authorization` header is missing or invalid.
+
+---
+
+## 🧮 Suitability Scoring & Financial Formulas
+
+### Suitability Score (0 to 100 Points)
+
+1. **Soil Compatibility (Max 40 Pts)**:
+   - Suitable Soil Match: **40 Pts**
+   - Moderately Compatible Soil: **20 Pts**
+   - Incompatible: **0 Pts**
+   - *Compatibility Matrix*: `LOAMY` soil is moderately compatible with all soils. `ALLUVIAL` & `CLAY` are compatible. `BLACK` & `CLAY` are compatible. `RED` & `SANDY` are compatible.
+2. **Season Matching (Max 30 Pts)**:
+   - Season Match: **30 Pts**, else **0 Pts**.
+3. **Water Access (Max 30 Pts)**:
+   - Exact Match: **30 Pts**
+   - Surplus Water Access: **20 Pts**
+   - 1 Level Short: **10 Pts**
+   - 2 Levels Short: **0 Pts**
+4. **Weather Telemetry Bounded Adjustment (Max ±5 Pts)**:
+   - Applied dynamically based on live rainfall/temperature telemetry.
+5. **Tie-Breaking Rule**:
+   - Equal suitability scores are tie-broken by higher projected **ROI %**.
+
+### Financial ROI Formulas (for Farm Size `acres`)
+
+- **Fertilizer Costs**:
+  - `Urea Cost` = `Urea (Kg/Ac) * acres * ₹18.50`
+  - `DAP Cost` = `DAP (Kg/Ac) * acres * ₹32.00`
+  - `MOP Cost` = `MOP (Kg/Ac) * acres * ₹22.00`
+  - `Gross Fertilizer Cost` = `Urea Cost + DAP Cost + MOP Cost`
+  - `Subsidy Savings` = `Gross Fertilizer Cost * Subsidy Rate` (30% for Small, 0% for Large)
+  - `Net Fertilizer Cost` = `Gross Fertilizer Cost - Subsidy Savings`
+- **Total Input Cost**:
+  - `Seed Cost` = `Seed Cost Per Acre * acres`
+  - `Labor Cost` = `Labor Cost Per Acre * acres`
+  - `Total Input Cost` = `Net Fertilizer Cost + Seed Cost + Labor Cost`
+- **Profitability**:
+  - `Expected Total Yield` = `Yield Per Acre * acres`
+  - `Gross Revenue` = `Expected Total Yield * Market Price Per Unit`
+  - `Net Profit` = `Gross Revenue - Total Input Cost`
+  - `ROI %` = `(Net Profit / Total Input Cost) * 100.0`
+
+---
+
+## 🧪 Comprehensive Testing Checklist
+
+- [x] **Sign Up**: Register a new user account with 4-digit PIN. Verify salt & SHA-256 hash in DB.
+- [x] **Sign In**: Login with registered username & PIN. Verify UUID token generation.
+- [x] **First-Time Farm Setup**: Complete district selection (Thanjavur), soil (Alluvial), size (3.5 acres). Verify auto-classification as `SmallFarmer` (30% NPK Subsidy).
+- [x] **Get Advisory**: Generate Kuruvai season advisory. Confirm Paddy ranks #1, scaled NPK is calculated, 30% subsidy discount is applied, and weather advice notes are generated.
+- [x] **Advisory History**: Verify report is saved to history. Reopen full report card modal.
+- [x] **Weather Failure Fallback**: Verify Open-Meteo failure fallback triggers simulated telemetry without server crash.
+- [x] **401 Handling**: Verify protected API routes return `401 Unauthorized` without a valid `Authorization` token.
+- [x] **Water Allocation Concurrency**: Run 5-thread canal sluice gate simulation. Verify exactly 3 threads are granted (45 KL) and 2 denied from 50 KL reservoir.

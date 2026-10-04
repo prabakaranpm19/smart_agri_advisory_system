@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Premium web application for the Farmer Crop Advisory and Suitability System. Evaluate soils, seasons, yields, ROI, and government schemes.">
-    <title>AgriAdvisory - Smart Crop & Resource System</title>
-    <!-- Google Fonts & Icon Library -->
+    <meta name="description" content="Personalized Smart Crop Advisory & Resource Management System (Tamil Nadu Edition)">
+    <title>AgriAdvisory - Smart Crop & Resource Management (Tamil Nadu)</title>
+    <!-- Google Fonts & Icon Libraries -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,58 +13,57 @@
     <!-- Leaflet.js Interactive Map Engine -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
     <div class="app-container">
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
-            <div class="brand">
+        <aside class="sidebar" id="appSidebar">
+            <div class="brand" onclick="showSection('landing')">
                 <i class="fa-solid fa-leaf brand-icon"></i>
                 <div class="brand-text">
                     <h1>AgriAdvisory</h1>
-                    <span data-i18n="app.headerSubtitle">Smart Farm Assistant</span>
+                    <span data-i18n="landing.badge">Tamil Nadu Edition</span>
                 </div>
             </div>
-            <nav class="nav-menu">
-                <a href="#dashboard" class="nav-item active" id="nav-dashboard">
-                    <i class="fa-solid fa-chart-line"></i> <span data-i18n="nav.advisory">Dashboard</span>
-                </a>
-                <a href="#advisory" class="nav-item" id="nav-advisory">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="advisory.title">Suitability & ROI</span>
-                </a>
-                <a href="#farmers" class="nav-item" id="nav-farmers">
-                    <i class="fa-solid fa-users"></i> <span data-i18n="nav.farmers">Registered Farmers</span>
-                </a>
-                <a href="#crops" class="nav-item" id="nav-crops">
-                    <i class="fa-solid fa-wheat-awn"></i> <span data-i18n="nav.crops">Crop Catalog</span>
-                </a>
-                <a href="#weather" class="nav-item" id="nav-weather">
-                    <i class="fa-solid fa-cloud-sun-rain"></i> <span data-i18n="nav.weather">Live Weather Map</span>
-                </a>
+
+            <!-- Navigation Links (Dynamic per Auth State) -->
+            <nav class="nav-menu" id="navMenu">
+                <!-- Injected via JavaScript -->
             </nav>
+
+            <div class="sidebar-footer" id="sidebarFooter">
+                <div class="db-status-badge" id="dbStatusBadge">
+                    <i class="fa-solid fa-database"></i> <span id="dbStatusText">Checking DB Engine...</span>
+                </div>
+            </div>
         </aside>
 
-        <!-- Main Workspace -->
+        <!-- Main Workspace Area -->
         <main class="main-content">
-            <!-- Top bar -->
+            <!-- Top Header Bar -->
             <header class="top-bar">
                 <div class="page-title">
-                    <h2 id="current-section-title" data-i18n="app.title">AgriAdvisory System</h2>
+                    <h2 id="currentSectionTitle" data-i18n="app.title">AgriAdvisory System</h2>
                 </div>
 
                 <div class="header-controls">
-                    <!-- Language Picker -->
+                    <!-- User Account / Sign In Badge -->
+                    <div id="authHeaderContainer" class="auth-header-wrapper">
+                        <!-- Injected via JS -->
+                    </div>
+
+                    <!-- Language Switcher -->
                     <div class="lang-selector-wrapper">
                         <i class="fa-solid fa-globe lang-icon"></i>
                         <select id="languageSelect" onchange="i18n.setLanguage(this.value)" class="lang-select" aria-label="Select Language">
                             <option value="en">English</option>
-                            <option value="hi">हिंदी (Hindi)</option>
                             <option value="ta">தமிழ் (Tamil)</option>
+                            <option value="hi">हिंदी (Hindi)</option>
                         </select>
                     </div>
 
-                    <!-- Theme Switcher -->
+                    <!-- Theme Toggle -->
                     <button id="themeToggleBtn" onclick="theme.toggle()" class="theme-toggle-btn" aria-label="Toggle Theme">
                         <i class="fa-solid fa-moon" id="themeIcon"></i>
                         <span id="themeLabel" data-i18n="theme.dark">Dark Mode</span>
@@ -74,224 +73,551 @@
 
             <!-- Weather Ticker Bar -->
             <div class="weather-ticker-container">
-                <div class="ticker-label"><i class="fa-solid fa-cloud-sun-rain"></i> <span data-i18n="weather.title">Live Weather Alerts</span>:</div>
-                <div class="ticker-content" id="weather-ticker-text">
-                    Loading Open-Meteo climate telemetry...
+                <div class="ticker-label"><i class="fa-solid fa-cloud-sun-rain"></i> <span>Live Weather Alert Ticker:</span></div>
+                <div class="ticker-content" id="weatherTickerText">
+                    Fetching Tamil Nadu district weather telemetry...
                 </div>
             </div>
 
-            <!-- Dashboard Content Container -->
+            <!-- Content Workspace Sections -->
             <div class="content-body">
-                
-                <!-- SECTION 1: DASHBOARD OVERVIEW -->
+
+                <!-- SECTION 1: LANDING PAGE (UNAUTHENTICATED) -->
+                <section id="section-landing" class="content-section active">
+                    <div class="landing-hero">
+                        <div class="hero-badge" data-i18n="landing.badge">Tamil Nadu Edition</div>
+                        <h1 data-i18n="landing.title">Personalized Smart Farming & Resource Advisory System</h1>
+                        <p data-i18n="landing.subtitle">Sign up or log in to get customized crop suitability recommendations, live district weather telemetry, financial ROI forecasts, and government scheme guidance tailored to your exact farm.</p>
+
+                        <div class="hero-actions">
+                            <button class="btn btn-primary btn-lg" onclick="openAuthModal('signup')">
+                                <i class="fa-solid fa-user-plus"></i> <span data-i18n="landing.signUpBtn">Create Free Account</span>
+                            </button>
+                            <button class="btn btn-secondary btn-lg" onclick="openAuthModal('login')">
+                                <i class="fa-solid fa-right-to-bracket"></i> <span data-i18n="landing.signInBtn">Sign In to Your Farm</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Demo Accounts Notice Banner -->
+                    <div class="demo-accounts-card">
+                        <h4 data-i18n="landing.demoTitle"><i class="fa-solid fa-key"></i> Demo Credentials Available:</h4>
+                        <div class="demo-pills">
+                            <span class="demo-pill" onclick="quickFillDemo('demo', '1234')">🌾 <strong data-i18n="landing.demoFarmer">Farmer Demo: Username demo | PIN 1234</strong> (Click to Sign In)</span>
+                            <span class="demo-pill" onclick="quickFillDemo('admin', '9999')">⚙️ <strong data-i18n="landing.demoAdmin">Admin Demo: Username admin | PIN 9999</strong> (Click to Sign In)</span>
+                        </div>
+                    </div>
+
+                    <!-- System Feature Grid -->
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="f-icon"><i class="fa-solid fa-id-card-clip"></i></div>
+                            <h3 data-i18n="landing.feature1Title">Personalized Farm Profile</h3>
+                            <p data-i18n="landing.feature1Desc">Save your district, soil type, land size, and water source once. Every recommendation is custom-tailored to your farm.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="f-icon"><i class="fa-solid fa-seedling"></i></div>
+                            <h3 data-i18n="landing.feature2Title">Soil & Season Matching Engine</h3>
+                            <p data-i18n="landing.feature2Desc">Intelligent suitability scoring out of 100 based on soil compatibility, Kuruvai/Samba/Navarai season, and water access.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="f-icon"><i class="fa-solid fa-cloud-sun-rain"></i></div>
+                            <h3 data-i18n="landing.feature3Title">Live Open-Meteo Weather</h3>
+                            <p data-i18n="landing.feature3Desc">Real-time district weather telemetry and weather-aware advice (rain warnings, heatwave alerts, spraying advisories).</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="f-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                            <h3 data-i18n="landing.feature4Title">Financial ROI & Subsidy Breakdown</h3>
+                            <p data-i18n="landing.feature4Desc">Accurate cost estimation for scaled NPK fertilizers, seeds, labor, net profit, ROI %, and applicable TN subsidies.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="f-icon"><i class="fa-solid fa-water"></i></div>
+                            <h3 data-i18n="landing.feature5Title">Canal Water Allocation Simulator</h3>
+                            <p data-i18n="landing.feature5Desc">Multi-threaded Java concurrency simulation demonstrating synchronized reservoir allocation and CountDownLatch gating.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 2: FIRST-TIME FARM PROFILE SETUP -->
+                <section id="section-profile-setup" class="content-section">
+                    <div class="setup-container card glass-card">
+                        <div class="setup-header">
+                            <h2><i class="fa-solid fa-tractor text-success"></i> <span data-i18n="profileSetup.title">First-Time Farm Profile Setup</span></h2>
+                            <p data-i18n="profileSetup.subtitle">Set your farm details once to unlock personalized recommendations, weather alerts, and subsidy calculations.</p>
+                        </div>
+
+                        <form id="profileSetupForm" onsubmit="saveFarmProfile(event)">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.district">Tamil Nadu District</label>
+                                    <select id="setupDistrict" class="form-control" onchange="onSetupDistrictChange(this.value)" required>
+                                        <!-- Injected by JS -->
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.soil">Soil Type</label>
+                                    <select id="setupSoil" class="form-control" required>
+                                        <option value="ALLUVIAL" data-i18n="soils.ALLUVIAL">Alluvial Soil</option>
+                                        <option value="RED" data-i18n="soils.RED">Red Soil</option>
+                                        <option value="BLACK" data-i18n="soils.BLACK">Black Soil</option>
+                                        <option value="LOAMY" data-i18n="soils.LOAMY">Loamy Soil</option>
+                                        <option value="CLAY" data-i18n="soils.CLAY">Clay Soil</option>
+                                        <option value="SANDY" data-i18n="soils.SANDY">Sandy Soil</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.acres">Farm Size (Acres)</label>
+                                    <input type="number" step="0.1" min="0.1" max="500" id="setupAcres" value="3.5" class="form-control" oninput="onSetupAcresChange(this.value)" required>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.water">Water Access Level</label>
+                                    <select id="setupWater" class="form-control" required>
+                                        <option value="HIGH" data-i18n="waterLevels.HIGH">High Access</option>
+                                        <option value="MEDIUM" selected data-i18n="waterLevels.MEDIUM">Medium Access</option>
+                                        <option value="LOW" data-i18n="waterLevels.LOW">Low Access</option>
+                                    </select>
+                                </div>
+                                <div class="form-group span-2">
+                                    <label data-i18n="profileSetup.source">Primary Irrigation Source</label>
+                                    <select id="setupSource" class="form-control">
+                                        <option value="Canal" data-i18n="profileSetup.sourceCanal">Canal Irrigation</option>
+                                        <option value="Borewell" data-i18n="profileSetup.sourceBorewell">Borewell / Well</option>
+                                        <option value="Rain-fed" data-i18n="profileSetup.sourceRain">Rain-fed</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Farmer Auto-Classification Badge -->
+                            <div class="category-preview-banner" id="categoryPreviewBanner">
+                                <i class="fa-solid fa-certificate"></i> <span id="categoryPreviewText" data-i18n="profileSetup.smallBadge">Smallholder (≤ 5 Acres) - Eligible for 30% NPK Subsidy & PM-KISAN</span>
+                            </div>
+
+                            <div class="form-actions mt-4">
+                                <button type="submit" class="btn btn-primary btn-block btn-lg">
+                                    <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="profileSetup.submitBtn">Save Farm Profile & Open Dashboard</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- SECTION 3: PERSONAL DASHBOARD -->
                 <section id="section-dashboard" class="content-section">
-                    <div class="welcome-card">
+                    <div class="welcome-card card glass-card">
                         <div class="welcome-text">
-                            <h3 data-i18n="app.title">Welcome to AgriAdvisory Dashboard</h3>
-                            <p data-i18n="app.headerSubtitle">Data-driven crop recommendations, live satellite weather telemetry, ROI economics, and government subsidy finders.</p>
+                            <h3><span data-i18n="dashboard.greeting">Welcome back,</span> <span id="dashFarmerName">Farmer</span>!</h3>
+                            <p data-i18n="dashboard.subtitle">Here is your personalized farm telemetry and quick advisory hub.</p>
                         </div>
-                        <div class="welcome-action">
-                            <a href="#advisory" class="btn btn-primary" onclick="showSection('advisory')">
-                                <span data-i18n="advisory.calculateBtn">Run Crop Advisory</span> <i class="fa-solid fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="stats-grid grid-2-stats">
-                        <div class="stat-card">
-                            <div class="stat-icon icon-crops"><i class="fa-solid fa-seedling"></i></div>
-                            <div class="stat-details">
-                                <span class="stat-value" id="stat-crops">-</span>
-                                <span class="stat-label" data-i18n="crops.title">Crops in Catalog</span>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon icon-farmers"><i class="fa-solid fa-users"></i></div>
-                            <div class="stat-details">
-                                <span class="stat-value" id="stat-farmers">-</span>
-                                <span class="stat-label" data-i18n="farmers.title">Registered Farmers</span>
-                            </div>
+                        <div class="quick-buttons">
+                            <button class="btn btn-success" onclick="showSection('advisory')">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="dashboard.getAdvisoryQuick">🌾 Get Crop Advisory</span>
+                            </button>
+                            <button class="btn btn-info" onclick="showSection('weather')">
+                                <i class="fa-solid fa-map-location-dot"></i> <span data-i18n="dashboard.viewMapQuick">🗺️ View Weather Map</span>
+                            </button>
+                            <button class="btn btn-warning" onclick="showSection('history')">
+                                <i class="fa-solid fa-clock-rotate-left"></i> <span data-i18n="dashboard.historyQuick">📜 View History Logs</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="showSection('water')">
+                                <i class="fa-solid fa-faucet-drip"></i> <span data-i18n="dashboard.waterQuick">💧 Water Simulator</span>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Real Open-Meteo Weather Dashboard Panel -->
-                    <div class="dashboard-panels">
-                        <div class="panel alert-panel">
-                            <div class="panel-header flex-header">
-                                <h4><i class="fa-solid fa-cloud-sun-rain text-success"></i> <span data-i18n="weather.title">Live Weather Station</span></h4>
-                                <select id="dashboard-farmer-select" onchange="loadFarmerWeather(this.value)" class="form-control-sm">
+                    <div class="dashboard-grid">
+                        <!-- Farmer Summary Card -->
+                        <div class="card profile-summary-card">
+                            <div class="card-header">
+                                <h4><i class="fa-solid fa-address-card text-primary"></i> <span data-i18n="dashboard.farmDetailsCard">My Farm Profile</span></h4>
+                                <button class="btn-icon" onclick="showSection('profile')" title="Edit Profile"><i class="fa-solid fa-pen-to-square"></i></button>
+                            </div>
+                            <div class="profile-details-grid">
+                                <div class="detail-item">
+                                    <span class="d-label" data-i18n="dashboard.districtLabel">District</span>
+                                    <span class="d-val text-primary" id="dashDistrict">--</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="d-label" data-i18n="dashboard.soilLabel">Soil Type</span>
+                                    <span class="d-val" id="dashSoil">--</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="d-label" data-i18n="dashboard.acresLabel">Farm Area</span>
+                                    <span class="d-val" id="dashAcres">-- Acres</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="d-label" data-i18n="dashboard.waterLabel">Water Level</span>
+                                    <span class="d-val" id="dashWater">--</span>
+                                </div>
+                                <div class="detail-item span-2">
+                                    <span class="d-label" data-i18n="dashboard.categoryLabel">Category</span>
+                                    <span class="d-val text-success" id="dashCategory">--</span>
+                                </div>
+                                <div class="detail-item span-2">
+                                    <span class="d-label" data-i18n="dashboard.subsidyLabel">NPK Subsidy Rate</span>
+                                    <span class="d-val text-warning" id="dashSubsidyRate">--%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live District Weather Panel -->
+                        <div class="card weather-summary-card">
+                            <div class="card-header">
+                                <h4><i class="fa-solid fa-cloud-sun-rain text-info"></i> <span data-i18n="dashboard.weatherCard">Live District Weather Telemetry</span></h4>
+                                <span class="badge badge-info" id="weatherDistBadge">Thanjavur</span>
+                            </div>
+                            <div class="weather-metrics-grid">
+                                <div class="w-metric-card">
+                                    <i class="fa-solid fa-temperature-high text-warning"></i>
+                                    <div>
+                                        <span class="w-val" id="dashTemp">-- °C</span>
+                                        <span class="w-lbl" data-i18n="weather.temp">Current Temp</span>
+                                    </div>
+                                </div>
+                                <div class="w-metric-card">
+                                    <i class="fa-solid fa-droplet text-info"></i>
+                                    <div>
+                                        <span class="w-val" id="dashHumidity">-- %</span>
+                                        <span class="w-lbl" data-i18n="weather.humidity">Humidity</span>
+                                    </div>
+                                </div>
+                                <div class="w-metric-card">
+                                    <i class="fa-solid fa-cloud-showers-heavy text-primary"></i>
+                                    <div>
+                                        <span class="w-val" id="dashRain">-- %</span>
+                                        <span class="w-lbl" data-i18n="weather.rainProb">Max Rain Prob</span>
+                                    </div>
+                                </div>
+                                <div class="w-metric-card">
+                                    <i class="fa-solid fa-wind text-secondary"></i>
+                                    <div>
+                                        <span class="w-val" id="dashWind">-- km/h</span>
+                                        <span class="w-lbl" data-i18n="weather.wind">Wind Speed</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 4: GET ADVISORY -->
+                <section id="section-advisory" class="content-section">
+                    <div class="card advisory-control-card">
+                        <div class="advisory-header">
+                            <h2><i class="fa-solid fa-wand-magic-sparkles text-success"></i> <span data-i18n="advisory.title">Personalized Crop Advisory & ROI Engine</span></h2>
+                            <p data-i18n="advisory.subtitle">Generating tailored crop suitability rankings using your saved farm profile.</p>
+                        </div>
+
+                        <div class="advisory-form-row">
+                            <div class="form-group flex-grow">
+                                <label data-i18n="advisory.selectSeason">Cultivation Season</label>
+                                <select id="advisorySeason" class="form-control">
+                                    <option value="SUMMER" selected data-i18n="advisory.seasonKuruvai">Kuruvai / Summer (Kharif)</option>
+                                    <option value="WINTER" data-i18n="advisory.seasonSamba">Samba / Winter (Rabi)</option>
+                                    <option value="SPRING" data-i18n="advisory.seasonNavarai">Navarai / Spring (Zaid)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button class="btn btn-primary btn-lg" onclick="runPersonalAdvisory()">
+                                    <i class="fa-solid fa-calculator"></i> <span data-i18n="advisory.runBtn">✨ Run Advisory Analysis</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advisory Results Container (Hidden until generated) -->
+                    <div id="advisoryResultsContainer" class="advisory-results-wrapper hidden">
+                        <!-- Top Recommendation Card -->
+                        <div class="card top-crop-hero-card">
+                            <div class="top-crop-header">
+                                <div>
+                                    <span class="badge badge-success" data-i18n="advisory.topTitle">Top Recommendation Deep Dive:</span>
+                                    <h2 id="topCropName">Paddy (Rice)</h2>
+                                    <span class="classification-tag" id="topCropClassification">Food Crop (Cereal Grain)</span>
+                                </div>
+                                <div class="score-badge-circle">
+                                    <span class="score-num" id="topCropScore">95</span>
+                                    <span class="score-label">/ 100 Match</span>
+                                </div>
+                            </div>
+
+                            <div class="economics-grid">
+                                <!-- Yield & NPK Quantities -->
+                                <div class="econ-card">
+                                    <h4 data-i18n="advisory.npkTitle">Scaled NPK Fertilizer Requirement</h4>
+                                    <div class="metric-row">
+                                        <span data-i18n="advisory.estYield">Estimated Yield:</span>
+                                        <strong id="topYield">84.0 Qt (for 3.5 Acres)</strong>
+                                    </div>
+                                    <div class="metric-row">
+                                        <span data-i18n="advisory.urea">Urea Required:</span>
+                                        <strong id="topUrea">175.0 Kg</strong>
+                                    </div>
+                                    <div class="metric-row">
+                                        <span data-i18n="advisory.dap">DAP Required:</span>
+                                        <strong id="topDap">105.0 Kg</strong>
+                                    </div>
+                                    <div class="metric-row">
+                                        <span data-i18n="advisory.mop">MOP Required:</span>
+                                        <strong id="topMop">70.0 Kg</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Financial Breakdown Table -->
+                                <div class="econ-card">
+                                    <h4 data-i18n="advisory.financialTitle">Financial Economics & Net Profit Forecast</h4>
+                                    <div class="financial-table">
+                                        <div class="f-row"><span>Gross Fertilizer Cost:</span><strong id="finGrossCost">₹8,137.50</strong></div>
+                                        <div class="f-row text-success"><span>Govt NPK Subsidy Savings:</span><strong id="finSubsidy">-₹2,441.25 (30%)</strong></div>
+                                        <div class="f-row"><span>Net Fertilizer Cost:</span><strong id="finNetCost">₹5,696.25</strong></div>
+                                        <div class="f-row"><span>Estimated Seed Cost:</span><strong id="finSeedCost">₹10,500.00</strong></div>
+                                        <div class="f-row"><span>Estimated Labor Cost:</span><strong id="finLaborCost">₹28,000.00</strong></div>
+                                        <div class="f-row total-row"><span>Total Input Cost:</span><strong id="finTotalCost">₹44,196.25</strong></div>
+                                        <div class="f-row"><span>Gross Revenue:</span><strong id="finRevenue">₹1,93,200.00</strong></div>
+                                        <div class="f-row profit-row"><span>Estimated Net Profit:</span><strong id="finProfit" class="text-success">₹1,49,003.75</strong></div>
+                                        <div class="f-row roi-row"><span>Return on Investment (ROI):</span><strong id="finRoi" class="text-warning">337.14%</strong></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Advice Notes & Schemes -->
+                            <div class="notes-schemes-grid mt-3">
+                                <div class="card inner-card">
+                                    <h4><i class="fa-solid fa-cloud-sun text-warning"></i> <span data-i18n="advisory.adviceTitle">Weather-Aware Farming Advice Notes</span></h4>
+                                    <ul class="advice-list" id="adviceNotesList">
+                                        <!-- Injected by JS -->
+                                    </ul>
+                                </div>
+                                <div class="card inner-card">
+                                    <h4><i class="fa-solid fa-building-columns text-primary"></i> <span data-i18n="advisory.schemesTitle">Applicable Subsidies & Schemes</span></h4>
+                                    <ul class="schemes-list" id="schemesList">
+                                        <!-- Injected by JS -->
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Full Ranked Crops Table -->
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-list-ol text-primary"></i> <span data-i18n="advisory.rankedTitle">Suitability Ranking Matrix (Score / 100)</span></h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="advisory.rank">Rank</th>
+                                            <th data-i18n="advisory.crop">Crop Name</th>
+                                            <th data-i18n="advisory.classification">Classification</th>
+                                            <th data-i18n="advisory.score">Suitability Score</th>
+                                            <th data-i18n="advisory.estYield">Estimated Yield</th>
+                                            <th data-i18n="advisory.reason">Compatibility Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="rankedCropsTableBody">
+                                        <!-- Injected by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 5: ADVISORY HISTORY -->
+                <section id="section-history" class="content-section">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <h2><i class="fa-solid fa-clock-rotate-left text-warning"></i> <span data-i18n="history.title">Personal Advisory History</span></h2>
+                                <p data-i18n="history.subtitle">Review your past crop recommendations and financial reports.</p>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="history.colDate">Date</th>
+                                        <th data-i18n="history.colCrop">Recommended Crop</th>
+                                        <th data-i18n="history.colSeason">Season</th>
+                                        <th data-i18n="history.colScore">Suitability</th>
+                                        <th data-i18n="history.colProfit">Net Profit</th>
+                                        <th data-i18n="history.colRoi">ROI %</th>
+                                        <th data-i18n="history.colAction">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <!-- Injected by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 6: WEATHER MAP -->
+                <section id="section-weather" class="content-section">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <h2><i class="fa-solid fa-map-location-dot text-info"></i> <span data-i18n="weather.title">Tamil Nadu 15-District Interactive Weather Map</span></h2>
+                                <p data-i18n="weather.subtitle">Click any district to inspect live Open-Meteo telemetry and 5-day agricultural weather forecast.</p>
+                            </div>
+                            <div class="map-district-select">
+                                <select id="mapDistrictSelector" class="form-control" onchange="onMapDistrictSelect(this.value)">
                                     <!-- Injected by JS -->
                                 </select>
                             </div>
-                            <div class="panel-body">
-                                <div class="weather-metrics-grid">
-                                    <div class="w-metric-card">
-                                        <i class="fa-solid fa-temperature-high text-warning"></i>
-                                        <div>
-                                            <span class="w-val" id="dash-temp">-- °C</span>
-                                            <span class="w-lbl" data-i18n="weather.currentTemp">Current Temp</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-metric-card">
-                                        <i class="fa-solid fa-droplet text-info"></i>
-                                        <div>
-                                            <span class="w-val" id="dash-humidity">-- %</span>
-                                            <span class="w-lbl" data-i18n="weather.humidity">Humidity</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-metric-card">
-                                        <i class="fa-solid fa-cloud-showers-heavy text-blue"></i>
-                                        <div>
-                                            <span class="w-val" id="dash-rain">-- %</span>
-                                            <span class="w-lbl" data-i18n="weather.rainProb">Rain Prob</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-metric-card">
-                                        <i class="fa-solid fa-wind text-muted"></i>
-                                        <div>
-                                            <span class="w-val" id="dash-wind">-- km/h</span>
-                                            <span class="w-lbl" data-i18n="weather.windSpeed">Wind Speed</span>
-                                        </div>
-                                    </div>
+                        </div>
+
+                        <div class="map-highlight-banner" id="mapHighlightBanner">
+                            <i class="fa-solid fa-star text-warning"></i> <span id="mapHighlightText">Your home district is highlighted on the map!</span>
+                        </div>
+
+                        <div class="weather-map-layout">
+                            <div id="leafletMap" class="leaflet-map-container"></div>
+
+                            <div class="weather-info-sidepanel card glass-card" id="mapWeatherSidePanel">
+                                <h3 id="panelDistrictTitle">Thanjavur District</h3>
+                                <div class="panel-metrics">
+                                    <div class="p-metric"><span data-i18n="weather.temp">Temp:</span> <strong id="panelTemp">-- °C</strong></div>
+                                    <div class="p-metric"><span data-i18n="weather.humidity">Humidity:</span> <strong id="panelHumidity">-- %</strong></div>
+                                    <div class="p-metric"><span data-i18n="weather.rainProb">Rain Risk:</span> <strong id="panelRain">-- %</strong></div>
+                                    <div class="p-metric"><span data-i18n="weather.wind">Wind:</span> <strong id="panelWind">-- km/h</strong></div>
                                 </div>
 
-                                <h5 class="forecast-section-title" data-i18n="weather.forecastTitle">5-Day Agricultural Weather Forecast</h5>
-                                <div class="forecast-strip" id="dashboard-forecast-strip">
+                                <h4 class="mt-3" data-i18n="weather.forecastTitle">5-Day Agricultural Forecast</h4>
+                                <div class="forecast-list" id="forecastList">
                                     <!-- Injected by JS -->
                                 </div>
                             </div>
                         </div>
-                        
-                        <div class="panel quick-actions-panel">
-                            <div class="panel-header">
-                                <h4><i class="fa-solid fa-bolt"></i> Quick Operations</h4>
-                            </div>
-                            <div class="panel-body grid-2">
-                                <button class="quick-btn" onclick="showModal('register-farmer-modal')">
-                                    <i class="fa-solid fa-user-plus"></i>
-                                    <span data-i18n="farmers.registerBtn">+ Register Farmer</span>
-                                </button>
-                                <button class="quick-btn" onclick="showModal('add-crop-modal')">
-                                    <i class="fa-solid fa-folder-plus"></i>
-                                    <span data-i18n="crops.addBtn">+ Add Crop Profile</span>
-                                </button>
-                                <button class="quick-btn" onclick="showSection('weather')">
-                                    <i class="fa-solid fa-map-location-dot"></i>
-                                    <span data-i18n="nav.weather">Satellite Map</span>
-                                </button>
-                                <button class="quick-btn" onclick="refreshAllData()">
-                                    <i class="fa-solid fa-arrows-rotate"></i>
-                                    <span>Sync Database</span>
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 </section>
 
-                <!-- SECTION 2: SUITABILITY & ROI ADVISORY -->
-                <section id="section-advisory" class="content-section d-none">
-                    <div class="advisory-workspace">
-                        <div class="card advisory-control">
-                            <div class="card-header">
-                                <h3 data-i18n="advisory.title">Smart Crop Suitability & ROI Economics Engine</h3>
-                            </div>
-                            <div class="card-body">
-                                <p class="card-subtitle-text" data-i18n="advisory.subtitle">Calculate crop compatibility score, yield estimate, scaled NPK fertilizer, net profit economics, and applicable government schemes.</p>
-                                <form id="advisory-form" onsubmit="runAdvisory(event)">
-                                    <div class="form-group">
-                                        <label for="advisory-farmer"><i class="fa-solid fa-user"></i> <span data-i18n="advisory.selectFarmer">Select Registered Farmer</span></label>
-                                        <select id="advisory-farmer" class="form-control" required>
-                                            <option value="" disabled selected data-i18n="advisory.selectFarmerPlaceholder">-- Choose a Farmer --</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="advisory-season"><i class="fa-solid fa-sun"></i> <span data-i18n="advisory.selectSeason">Current Growth Season</span></label>
-                                        <select id="advisory-season" class="form-control" required>
-                                            <option value="SUMMER" data-i18n="seasons.SUMMER">Summer (Kharif)</option>
-                                            <option value="WINTER" data-i18n="seasons.WINTER">Winter (Rabi)</option>
-                                            <option value="SPRING" data-i18n="seasons.SPRING">Spring (Zaid)</option>
-                                        </select>
-                                    </div>
-                                    <button type="submit" class="btn btn-success btn-block" id="btn-run-advisory">
-                                        <i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="advisory.calculateBtn">Run Suitability & ROI Analysis</span>
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-
-                        <!-- Results Container -->
-                        <div class="advisory-results-container">
-                            <div class="card card-results d-none" id="advisory-results-card">
-                                <div class="card-header flex-header">
-                                    <h3><i class="fa-solid fa-square-poll-horizontal"></i> <span data-i18n="advisory.resultTitle">Advisory Recommendation & ROI Receipt</span></h3>
-                                </div>
-                                <div class="card-body">
-                                    <div id="structured-results-panel">
-                                        <div class="top-recommendation-banner" id="top-crop-banner">
-                                            <!-- Injected by JS -->
-                                        </div>
-
-                                        <div class="results-grid">
-                                            <div class="crops-ranking-list">
-                                                <h4 data-i18n="advisory.resultTitle">Ranked Suitability (All Crops)</h4>
-                                                <div class="ranking-scroll" id="crops-ranking-items">
-                                                    <!-- Injected by JS -->
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="fertilizer-subsidy-details" id="fertilizer-details-panel">
-                                                <!-- Injected by JS -->
-                                            </div>
-                                        </div>
-
-                                        <!-- Financial ROI Breakdown Card -->
-                                        <div class="roi-economics-card margin-top-20" id="roi-economics-panel">
-                                            <!-- Injected by JS -->
-                                        </div>
-
-                                        <!-- Government Schemes Card -->
-                                        <div class="schemes-card margin-top-20" id="schemes-panel">
-                                            <!-- Injected by JS -->
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Welcome / Empty State -->
-                            <div class="card-empty-state" id="advisory-empty-state">
-                                <i class="fa-solid fa-wand-magic-sparkles empty-icon"></i>
-                                <h4 data-i18n="advisory.title">Ready for Advisory Run</h4>
-                                <p data-i18n="advisory.subtitle">Select a registered farmer and growth season from the form to generate yield, NPK, ROI economics, and government subsidy reports.</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- SECTION 3: REGISTERED FARMERS -->
-                <section id="section-farmers" class="content-section d-none">
+                <!-- SECTION 7: RISK ALERTS -->
+                <section id="section-alerts" class="content-section">
                     <div class="card">
-                        <div class="card-header flex-header">
-                            <h3><i class="fa-solid fa-users"></i> <span data-i18n="farmers.title">Farmer Registries</span></h3>
-                            <button class="btn btn-primary" onclick="showModal('register-farmer-modal')">
-                                <i class="fa-solid fa-user-plus"></i> <span data-i18n="farmers.registerBtn">Register New Farmer</span>
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-triangle-exclamation text-danger"></i> <span>Agricultural Risk Warnings & Telemetry Alerts</span></h2>
+                        </div>
+                        <div class="alert-board-list" id="alertBoardList">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 8: WATER ALLOCATION SIMULATION -->
+                <section id="section-water" class="content-section">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <h2><i class="fa-solid fa-faucet-drip text-primary"></i> <span data-i18n="water.title">Shared Reservoir Canal Water Allocation</span></h2>
+                                <p data-i18n="water.subtitle">5-Thread Java concurrency simulation executing simultaneous canal sluice gate requests.</p>
+                            </div>
+                            <button class="btn btn-primary btn-lg" onclick="triggerWaterSimulation()">
+                                <i class="fa-solid fa-play"></i> <span data-i18n="water.fireBtn">🚀 Fire Simultaneous Sluice Gates</span>
                             </button>
                         </div>
-                        <div class="card-body overflow-x">
-                            <table class="table" id="farmers-table">
+
+                        <div class="simulation-info-banner">
+                            <i class="fa-solid fa-circle-info"></i> <span data-i18n="water.info">5 canal channels request 15 KL each simultaneously from a 50 KL reservoir using CountDownLatch synchronization. Exactly 3 channels are granted (45 KL) and 2 are denied. Thread execution order varies on each run.</span>
+                        </div>
+
+                        <div class="terminal-panel mt-3">
+                            <div class="terminal-header">
+                                <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                                <span class="terminal-title" data-i18n="water.consoleTitle">Developer Concurrency Console Output</span>
+                            </div>
+                            <pre id="waterLogsConsole" class="terminal-body">Click 'Fire Simultaneous Sluice Gates' to start 5-thread Java concurrency simulation...</pre>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 9: PROFILE EDIT -->
+                <section id="section-profile" class="content-section">
+                    <div class="card glass-card max-w-700">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-user-gear text-primary"></i> <span data-i18n="nav.profile">Farm Profile Settings</span></h2>
+                        </div>
+                        <form onsubmit="saveFarmProfile(event)">
+                            <div class="form-grid">
+                                <div class="form-group span-2">
+                                    <label data-i18n="auth.nameLabel">Full Name</label>
+                                    <input type="text" id="profileName" class="form-control" required>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.district">Tamil Nadu District</label>
+                                    <select id="profileDistrict" class="form-control" onchange="onSetupDistrictChange(this.value)" required>
+                                        <!-- Injected by JS -->
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.soil">Soil Type</label>
+                                    <select id="profileSoil" class="form-control" required>
+                                        <option value="ALLUVIAL" data-i18n="soils.ALLUVIAL">Alluvial Soil</option>
+                                        <option value="RED" data-i18n="soils.RED">Red Soil</option>
+                                        <option value="BLACK" data-i18n="soils.BLACK">Black Soil</option>
+                                        <option value="LOAMY" data-i18n="soils.LOAMY">Loamy Soil</option>
+                                        <option value="CLAY" data-i18n="soils.CLAY">Clay Soil</option>
+                                        <option value="SANDY" data-i18n="soils.SANDY">Sandy Soil</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.acres">Farm Size (Acres)</label>
+                                    <input type="number" step="0.1" min="0.1" max="500" id="profileAcres" class="form-control" required>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="profileSetup.water">Water Access Level</label>
+                                    <select id="profileWater" class="form-control" required>
+                                        <option value="HIGH" data-i18n="waterLevels.HIGH">High Access</option>
+                                        <option value="MEDIUM" data-i18n="waterLevels.MEDIUM">Medium Access</option>
+                                        <option value="LOW" data-i18n="waterLevels.LOW">Low Access</option>
+                                    </select>
+                                </div>
+                                <div class="form-group span-2">
+                                    <label data-i18n="profileSetup.source">Primary Irrigation Source</label>
+                                    <select id="profileSource" class="form-control">
+                                        <option value="Canal" data-i18n="profileSetup.sourceCanal">Canal Irrigation</option>
+                                        <option value="Borewell" data-i18n="profileSetup.sourceBorewell">Borewell / Well</option>
+                                        <option value="Rain-fed" data-i18n="profileSetup.sourceRain">Rain-fed</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-actions mt-4">
+                                <button type="submit" class="btn btn-primary btn-block">
+                                    <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="profileSetup.submitBtn">Save Farm Profile</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- ADMIN SECTION 10: MANAGE CROPS (ADMIN ONLY) -->
+                <section id="section-admin-crops" class="content-section">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <h2><i class="fa-solid fa-wheat-awn text-success"></i> <span>Crop Catalog Management (Admin)</span></h2>
+                            </div>
+                            <button class="btn btn-success" onclick="openCropModal()">
+                                <i class="fa-solid fa-plus"></i> <span>+ Register New Crop</span>
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th data-i18n="farmers.colId">ID</th>
-                                        <th data-i18n="farmers.colName">Name</th>
-                                        <th data-i18n="farmers.colType">Scale/Type</th>
-                                        <th data-i18n="farmers.colAcres">Acreage</th>
-                                        <th data-i18n="farmers.colLocation">Location</th>
-                                        <th data-i18n="farmers.colSoil">Soil Type</th>
-                                        <th data-i18n="farmers.colWater">Water Access</th>
-                                        <th data-i18n="farmers.colSubsidy">Subsidy Rate</th>
-                                        <th data-i18n="farmers.colActions">Actions</th>
+                                        <th>Crop Name</th>
+                                        <th>Type</th>
+                                        <th>Suitable Soils</th>
+                                        <th>Growth Season</th>
+                                        <th>Water Level</th>
+                                        <th>Yield (Qt/Ac)</th>
+                                        <th>Market Price (₹/Qt)</th>
+                                        <th>Labor Cost (₹/Ac)</th>
                                     </tr>
                                 </thead>
-                                <tbody id="farmers-table-body">
+                                <tbody id="adminCropsTableBody">
                                     <!-- Injected by JS -->
                                 </tbody>
                             </table>
@@ -299,48 +625,30 @@
                     </div>
                 </section>
 
-                <!-- SECTION 4: CROP CATALOG -->
-                <section id="section-crops" class="content-section d-none">
+                <!-- ADMIN SECTION 11: ALL FARMERS (ADMIN ONLY) -->
+                <section id="section-admin-farmers" class="content-section">
                     <div class="card">
-                        <div class="card-header flex-header">
-                            <h3><i class="fa-solid fa-wheat-awn"></i> <span data-i18n="crops.title">Crop Catalog Database</span></h3>
-                            <button class="btn btn-primary" onclick="showModal('add-crop-modal')">
-                                <i class="fa-solid fa-plus"></i> <span data-i18n="crops.addBtn">Add New Crop Profile</span>
-                            </button>
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-users text-primary"></i> <span>All Registered Farmers Registry (Admin)</span></h2>
                         </div>
-                        <div class="card-body overflow-x">
-                            <table class="table" id="crops-table">
+                        <div class="table-responsive">
+                            <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th data-i18n="crops.colName">Crop Name</th>
-                                        <th data-i18n="crops.colType">Classification</th>
-                                        <th data-i18n="crops.colSeason">Growth Season</th>
-                                        <th data-i18n="crops.colWater">Water Level</th>
-                                        <th data-i18n="crops.colYield">Avg Yield</th>
-                                        <th data-i18n="crops.colPrice">Market Price</th>
-                                        <th data-i18n="crops.colSoils">Suitable Soil Profiles</th>
-                                        <th data-i18n="crops.colNpk">NPK Needs (Per Acre)</th>
+                                        <th>Farmer ID</th>
+                                        <th>Name</th>
+                                        <th>District</th>
+                                        <th>Acres</th>
+                                        <th>Soil</th>
+                                        <th>Water Access</th>
+                                        <th>Category</th>
+                                        <th>Subsidy Rate</th>
                                     </tr>
                                 </thead>
-                                <tbody id="crops-table-body">
+                                <tbody id="adminFarmersTableBody">
                                     <!-- Injected by JS -->
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- SECTION 5: LIVE WEATHER MAP & OPEN-METEO -->
-                <section id="section-weather" class="content-section d-none">
-                    <div class="card">
-                        <div class="card-header flex-header">
-                            <h3><i class="fa-solid fa-map-location-dot"></i> <span data-i18n="weather.mapTitle">Interactive Spatial Field Map</span></h3>
-                            <select id="map-farmer-select" onchange="renderMapForFarmer(this.value)" class="form-control-sm">
-                                <!-- Injected by JS -->
-                            </select>
-                        </div>
-                        <div class="card-body">
-                            <div id="leaflet-map" style="height: 420px; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-md);"></div>
                         </div>
                     </div>
                 </section>
@@ -349,213 +657,146 @@
         </main>
     </div>
 
-    <!-- =========================================================================
-    MODAL WINDOWS
-    ========================================================================= -->
-
-    <!-- Modal 1: Register Farmer -->
-    <div class="modal-overlay d-none" id="register-farmer-modal">
-        <div class="modal-container">
+    <!-- MODAL 1: AUTHENTICATION (SIGN IN / SIGN UP) -->
+    <div class="modal-overlay" id="authModal">
+        <div class="modal-box card glass-card">
             <div class="modal-header">
-                <h3 data-i18n="modal.farmerTitle">Register a New Farmer</h3>
-                <button class="modal-close" onclick="hideModal('register-farmer-modal')"><i class="fa-solid fa-xmark"></i></button>
+                <h3 id="authModalTitle" data-i18n="auth.signInTitle">Sign In to AgriAdvisory</h3>
+                <button class="btn-close" onclick="closeAuthModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <form id="register-farmer-form" onsubmit="submitFarmer(event)">
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="farmer-id" data-i18n="modal.farmerId">Farmer ID (Unique Code)</label>
-                            <input type="text" id="farmer-id" placeholder="e.g. FM-305" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-2">
-                            <label for="farmer-name" data-i18n="modal.farmerName">Full Name</label>
-                            <input type="text" id="farmer-name" placeholder="e.g. Sardar Baldev" class="form-control" required>
-                        </div>
-                    </div>
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="loginTabBtn" onclick="switchAuthTab('login')" data-i18n="auth.signInSubmit">Sign In</button>
+                    <button class="auth-tab" id="signupTabBtn" onclick="switchAuthTab('signup')" data-i18n="auth.signUpSubmit">Create Account</button>
+                </div>
 
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="farmer-acres" data-i18n="modal.farmerAcres">Farm Size (Acres)</label>
-                            <input type="number" step="0.1" min="0.1" max="5000" id="farmer-acres" placeholder="Acres" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="farmer-class" data-i18n="modal.farmerCategory">Acreage Class</label>
-                            <select id="farmer-class" class="form-control" required>
-                                <option value="1" data-i18n="modal.farmerSmall">Small Scale (&le; 5 Acres, 30% Fertilizer Subsidy)</option>
-                                <option value="2" data-i18n="modal.farmerLarge">Large Scale (&gt; 5 Acres, Standard Commercial Rates)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group flex-2">
-                            <label for="farmer-location" data-i18n="modal.farmerLocation">Location / District</label>
-                            <input type="text" id="farmer-location" placeholder="e.g. Ludhiana, Punjab" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="farmer-lat" data-i18n="modal.farmerLat">Latitude</label>
-                            <input type="number" step="0.0001" id="farmer-lat" placeholder="e.g. 30.90" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="farmer-lon" data-i18n="modal.farmerLon">Longitude</label>
-                            <input type="number" step="0.0001" id="farmer-lon" placeholder="e.g. 75.85" class="form-control" required>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="farmer-soil" data-i18n="modal.farmerSoil">Soil Profile Type</label>
-                            <select id="farmer-soil" class="form-control" required>
-                                <option value="CLAY" data-i18n="soils.CLAY">Clay</option>
-                                <option value="BLACK" data-i18n="soils.BLACK">Black</option>
-                                <option value="SANDY" data-i18n="soils.SANDY">Sandy</option>
-                                <option value="LOAMY" data-i18n="soils.LOAMY">Loamy</option>
-                            </select>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="farmer-water" data-i18n="modal.farmerWater">Water Access Level</label>
-                            <select id="farmer-water" class="form-control" required>
-                                <option value="LOW" data-i18n="waterLevels.LOW">Low Access</option>
-                                <option value="MEDIUM" data-i18n="waterLevels.MEDIUM">Medium Access</option>
-                                <option value="HIGH" data-i18n="waterLevels.HIGH">High Access</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" onclick="hideModal('register-farmer-modal')" data-i18n="modal.close">Cancel</button>
-                        <button type="submit" class="btn btn-primary" data-i18n="modal.saveFarmer">Save Farmer Profile</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal 2: Add Crop Profile -->
-    <div class="modal-overlay d-none" id="add-crop-modal">
-        <div class="modal-container">
-            <div class="modal-header">
-                <h3 data-i18n="modal.cropTitle">Add a New Crop Profile</h3>
-                <button class="modal-close" onclick="hideModal('add-crop-modal')"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="modal-body">
-                <form id="add-crop-form" onsubmit="submitCrop(event)">
-                    <div class="form-row">
-                        <div class="form-group flex-2">
-                            <label for="crop-name" data-i18n="modal.cropName">Unique Crop Name</label>
-                            <input type="text" id="crop-name" placeholder="e.g. Tomato" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="crop-type" data-i18n="modal.cropType">Classification Type</label>
-                            <select id="crop-type" class="form-control" onchange="toggleSpecialInput(this.value)" required>
-                                <option value="FoodCrop" selected data-i18n="modal.cropFood">Food Crop</option>
-                                <option value="CashCrop" data-i18n="modal.cropCash">Cash Crop</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-group" id="special-container">
-                        <label for="crop-special" id="special-label" data-i18n="modal.cropSpecial">Food Category</label>
-                        <input type="text" id="crop-special" placeholder="e.g. Fruit, Cereal, Vegetable" class="form-control" required>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="crop-season" data-i18n="modal.cropSeason">Optimal Season</label>
-                            <select id="crop-season" class="form-control" required>
-                                <option value="SUMMER" data-i18n="seasons.SUMMER">Summer (Kharif)</option>
-                                <option value="WINTER" data-i18n="seasons.WINTER">Winter (Rabi)</option>
-                                <option value="SPRING" data-i18n="seasons.SPRING">Spring (Zaid)</option>
-                            </select>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="crop-water" data-i18n="modal.cropWater">Required Water Level</label>
-                            <select id="crop-water" class="form-control" required>
-                                <option value="LOW" data-i18n="waterLevels.LOW">Low</option>
-                                <option value="MEDIUM" data-i18n="waterLevels.MEDIUM">Medium</option>
-                                <option value="HIGH" data-i18n="waterLevels.HIGH">High</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="crop-yield" data-i18n="modal.cropYield">Avg. Yield (Tons/Acre)</label>
-                            <input type="number" step="0.1" min="0.1" id="crop-yield" placeholder="e.g. 20.0" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="crop-price" data-i18n="modal.cropPrice">Market Price Per Ton (₹)</label>
-                            <input type="number" step="1" min="100" id="crop-price" placeholder="e.g. 22000" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="crop-seed-cost" data-i18n="modal.cropSeedCost">Seed Cost Per Acre (₹)</label>
-                            <input type="number" step="1" min="100" id="crop-seed-cost" placeholder="e.g. 3000" class="form-control" required>
-                        </div>
-                    </div>
-
+                <!-- Sign In Form -->
+                <form id="loginForm" onsubmit="handleLogin(event)" class="auth-form mt-3">
                     <div class="form-group">
-                        <label data-i18n="modal.cropSoils">Suitable Soil Profiles</label>
-                        <div class="checkbox-group">
-                            <label><input type="checkbox" name="crop-soils" value="CLAY"> <span data-i18n="soils.CLAY">Clay</span></label>
-                            <label><input type="checkbox" name="crop-soils" value="BLACK"> <span data-i18n="soils.BLACK">Black</span></label>
-                            <label><input type="checkbox" name="crop-soils" value="SANDY"> <span data-i18n="soils.SANDY">Sandy</span></label>
-                            <label><input type="checkbox" name="crop-soils" value="LOAMY"> <span data-i18n="soils.LOAMY">Loamy</span></label>
-                        </div>
+                        <label data-i18n="auth.usernameLabel">Username / Mobile Number</label>
+                        <input type="text" id="loginUsername" class="form-control" placeholder="e.g. demo or 9876543210" required>
                     </div>
+                    <div class="form-group">
+                        <label data-i18n="auth.pinLabel">4-6 Digit Security PIN</label>
+                        <input type="password" id="loginPin" class="form-control" maxlength="6" placeholder="e.g. 1234" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block btn-lg mt-3">
+                        <i class="fa-solid fa-right-to-bracket"></i> <span data-i18n="auth.signInSubmit">Sign In</span>
+                    </button>
+                </form>
 
-                    <div class="form-header-divider">NPK Fertilizer Quantities (Kg / Acre)</div>
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="crop-urea" data-i18n="modal.cropUrea">Urea Need (Nitrogen)</label>
-                            <input type="number" step="0.1" min="0" id="crop-urea" placeholder="Kg/Ac" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="crop-dap" data-i18n="modal.cropDap">DAP Need (Phosphorus)</label>
-                            <input type="number" step="0.1" min="0" id="crop-dap" placeholder="Kg/Ac" class="form-control" required>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="crop-mop" data-i18n="modal.cropMop">MOP Need (Potash)</label>
-                            <input type="number" step="0.1" min="0" id="crop-mop" placeholder="Kg/Ac" class="form-control" required>
-                        </div>
+                <!-- Sign Up Form -->
+                <form id="signupForm" onsubmit="handleSignup(event)" class="auth-form mt-3 hidden">
+                    <div class="form-group">
+                        <label data-i18n="auth.nameLabel">Full Farmer Name</label>
+                        <input type="text" id="signupName" class="form-control" placeholder="e.g. M. Selvam" required>
                     </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" onclick="hideModal('add-crop-modal')" data-i18n="modal.close">Cancel</button>
-                        <button type="submit" class="btn btn-primary" data-i18n="modal.saveCrop">Save Crop Profile</button>
+                    <div class="form-group">
+                        <label data-i18n="auth.usernameLabel">Username / Mobile Number</label>
+                        <input type="text" id="signupUsername" class="form-control" placeholder="e.g. selvam_farm" required>
                     </div>
+                    <div class="form-group">
+                        <label data-i18n="auth.pinLabel">4-6 Digit Security PIN</label>
+                        <input type="password" id="signupPin" class="form-control" maxlength="6" placeholder="4 to 6 digits" required>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-block btn-lg mt-3">
+                        <i class="fa-solid fa-user-plus"></i> <span data-i18n="auth.signUpSubmit">Create Account & Continue</span>
+                    </button>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Modal 3: View Farmer Recommendation History -->
-    <div class="modal-overlay d-none" id="view-history-modal">
-        <div class="modal-container modal-lg">
+    <!-- MODAL 2: FULL ADVISORY REPORT CARD DETAIL -->
+    <div class="modal-overlay" id="reportModal">
+        <div class="modal-box card glass-card modal-lg">
             <div class="modal-header">
-                <h3><span data-i18n="history.title">Advisory History</span>: <span id="history-farmer-name">Farmer Name</span></h3>
-                <button class="modal-close" onclick="hideModal('view-history-modal')"><i class="fa-solid fa-xmark"></i></button>
+                <h3><i class="fa-solid fa-file-invoice text-success"></i> <span>Full Advisory Report Card</span></h3>
+                <button class="btn-close" onclick="closeReportModal()">&times;</button>
             </div>
-            <div class="modal-body overflow-y max-h-400">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th data-i18n="history.colCrop">Crop Recommended</th>
-                            <th data-i18n="history.colScore">Suitability Rating</th>
-                            <th data-i18n="history.colYield">Est. Yield (Total)</th>
-                            <th data-i18n="history.colDate">Recommendation Date</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-table-body">
-                        <!-- Injected by JS -->
-                    </tbody>
-                </table>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="hideModal('view-history-modal')" data-i18n="modal.close">Close</button>
+            <div class="modal-body" id="reportModalBody">
+                <!-- Injected by JS -->
             </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- MODAL 3: ADMIN CROP EDIT -->
+    <div class="modal-overlay" id="cropModal">
+        <div class="modal-box card glass-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-wheat-awn text-success"></i> <span>Register / Edit Crop</span></h3>
+                <button class="btn-close" onclick="closeCropModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form onsubmit="handleSaveCropAdmin(event)">
+                    <div class="form-grid">
+                        <div class="form-group span-2">
+                            <label>Crop Name</label>
+                            <input type="text" id="cropNameInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Crop Type</label>
+                            <select id="cropTypeInput" class="form-control">
+                                <option value="FoodCrop">Food Crop</option>
+                                <option value="CashCrop">Cash Crop</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Suitable Season</label>
+                            <select id="cropSeasonInput" class="form-control">
+                                <option value="SUMMER">Kuruvai / Summer</option>
+                                <option value="WINTER">Samba / Winter</option>
+                                <option value="SPRING">Navarai / Spring</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Water Level</label>
+                            <select id="cropWaterInput" class="form-control">
+                                <option value="HIGH">High</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="LOW">Low</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Suitable Soils (semicolon separated)</label>
+                            <input type="text" id="cropSoilsInput" class="form-control" placeholder="CLAY;ALLUVIAL;LOAMY" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Yield Per Acre (Qt)</label>
+                            <input type="number" step="0.1" id="cropYieldInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Market Price Per Qt (₹)</label>
+                            <input type="number" step="1" id="cropPriceInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Seed Cost Per Acre (₹)</label>
+                            <input type="number" step="1" id="cropSeedCostInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Labor Cost Per Acre (₹)</label>
+                            <input type="number" step="1" id="cropLaborCostInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Urea Per Acre (Kg)</label>
+                            <input type="number" step="0.1" id="cropUreaInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>DAP Per Acre (Kg)</label>
+                            <input type="number" step="0.1" id="cropDapInput" class="form-control" required>
+                        </div>
+                        <div class="form-group span-2">
+                            <label>MOP Per Acre (Kg)</label>
+                            <input type="number" step="0.1" id="cropMopInput" class="form-control" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block mt-3">Save Crop Catalog Entry</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application JavaScript Engine -->
+    <script src="app.js?v=6"></script>
 </body>
 </html>

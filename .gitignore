@@ -9,5 +9,7 @@ bin/
 *.DS_Store
 Thumbs.db
 
-# Database files
+# Database & runtime files
 crop_advisory.db
+users.txt
+advisories.txt

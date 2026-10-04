@@ -1,16 +1,20 @@
-// API Base URL
+// API Base Endpoint
 const API_BASE = '/api';
 
-// Global application state
+// Global Application State
+let sessionToken = localStorage.getItem('authToken') || null;
+let currentUser = null;
+let currentFarmer = null;
+let activeSection = 'landing';
+let tnDistricts = {};
 let cropsCache = [];
 let farmersCache = [];
-let activeSection = 'dashboard';
-let weatherPollTimer = null;
 let leafletMap = null;
-let leafletMarker = null;
+let leafletMarkers = {};
+let currentMapDistrict = 'Thanjavur';
 
 // =========================================================================
-// I18N ENGINE
+// I18N SYSTEM
 // =========================================================================
 const i18n = {
     currentLang: 'en',
@@ -77,7 +81,10 @@ const i18n = {
 
             if (updateDOM) {
                 this.applyDOMTranslations();
-                refreshAllData();
+                if (currentUser) {
+                    // Update user language preference on backend
+                    fetchApi('/me', { method: 'PUT', body: JSON.stringify({ language: lang }) }).catch(() => {});
+                }
             }
         }
     },
@@ -94,34 +101,11 @@ const i18n = {
                 }
             }
         });
-
-        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-            const key = el.getAttribute('data-i18n-placeholder');
-            const translation = this.t(key);
-            if (translation) {
-                el.placeholder = translation;
-            }
-        });
-    },
-
-    lookup(category, code) {
-        if (!code) return '';
-        const cleanCode = String(code).trim().toUpperCase();
-        
-        const catObj = this.translations[this.currentLang]?.[category] || this.translations['en']?.[category] || {};
-        if (catObj[cleanCode]) return catObj[cleanCode];
-        if (catObj[code]) return catObj[code];
-
-        for (const k in catObj) {
-            if (k.toUpperCase() === cleanCode) return catObj[k];
-        }
-
-        return code;
     }
 };
 
 // =========================================================================
-// THEME SWITCHER MODULE
+// THEME SWITCHER
 // =========================================================================
 const theme = {
     currentMode: 'dark',
@@ -135,690 +119,879 @@ const theme = {
         this.currentMode = mode;
         document.documentElement.setAttribute('data-theme', mode);
         localStorage.setItem('selectedTheme', mode);
-
-        const iconEl = document.getElementById('themeIcon');
-        const labelEl = document.getElementById('themeLabel');
-
-        if (iconEl && labelEl) {
+        
+        const label = document.getElementById('themeLabel');
+        const icon = document.getElementById('themeIcon');
+        if (label && icon) {
             if (mode === 'light') {
-                iconEl.className = 'fa-solid fa-sun';
-                labelEl.textContent = i18n.t('theme.light');
+                label.textContent = 'Light Mode';
+                icon.className = 'fa-solid fa-sun';
             } else {
-                iconEl.className = 'fa-solid fa-moon';
-                labelEl.textContent = i18n.t('theme.dark');
+                label.textContent = 'Dark Mode';
+                icon.className = 'fa-solid fa-moon';
             }
         }
     },
 
     toggle() {
-        const nextMode = this.currentMode === 'dark' ? 'light' : 'dark';
-        this.setTheme(nextMode);
+        this.setTheme(this.currentMode === 'dark' ? 'light' : 'dark');
     }
 };
 
 // =========================================================================
-// APPLICATION INITIALIZATION & ROUTING
+// API HELPER FUNCTION (WITH TOKEN AUTHENTICATION)
+// =========================================================================
+async function fetchApi(endpoint, options = {}) {
+    const url = API_BASE + endpoint;
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+    };
+
+    if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+
+    try {
+        const response = await fetch(url, { ...options, headers });
+        const data = await response.json();
+
+        if (response.status === 401) {
+            // Unauthorized - clear token and return to landing page
+            handleUnauthorized();
+            throw new Error(data.error || 'Session expired. Please sign in again.');
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        return data;
+    } catch (err) {
+        console.error(`API Error [${endpoint}]:`, err.message);
+        throw err;
+    }
+}
+
+function handleUnauthorized() {
+    sessionToken = null;
+    currentUser = null;
+    currentFarmer = null;
+    localStorage.removeItem('authToken');
+    updateAuthHeader();
+    renderSidebarNav();
+    showSection('landing');
+}
+
+// =========================================================================
+// APP INITIALIZATION
 // =========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     theme.init();
     await i18n.init();
-    
-    setupNavigation();
-    i18n.applyDOMTranslations();
-    refreshAllData();
+
+    await loadServerStatus();
+    await loadDistricts();
+
+    // Check if token exists
+    if (sessionToken) {
+        try {
+            const meData = await fetchApi('/me');
+            currentUser = meData.user;
+            currentFarmer = meData.farmer;
+
+            if (currentUser.language) {
+                await i18n.setLanguage(currentUser.language, true);
+            }
+
+            updateAuthHeader();
+            renderSidebarNav();
+
+            if (!currentFarmer || currentFarmer.acres <= 0) {
+                showSection('profile-setup');
+            } else {
+                showSection('dashboard');
+                loadDashboardData();
+            }
+        } catch (err) {
+            handleUnauthorized();
+        }
+    } else {
+        updateAuthHeader();
+        renderSidebarNav();
+        showSection('landing');
+    }
+
+    // Refresh live weather alerts every 30s
+    setInterval(loadLiveAlerts, 30000);
+    loadLiveAlerts();
 });
 
-function setupNavigation() {
-    const navLinks = document.querySelectorAll('.nav-item');
-    navLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetId = link.getAttribute('href').substring(1);
-            showSection(targetId);
+async function loadServerStatus() {
+    try {
+        const res = await fetchApi('/status');
+        const badge = document.getElementById('dbStatusText');
+        if (badge) {
+            badge.textContent = res.jdbcActive ? 'SQLite (JDBC) Active' : 'Flat File (CSV Backup)';
+        }
+    } catch (e) {}
+}
+
+async function loadDistricts() {
+    try {
+        const data = await fetchApi('/districts');
+        tnDistricts = {};
+        data.forEach(d => {
+            tnDistricts[d.name] = d;
         });
+        populateDistrictDropdowns();
+    } catch (e) {}
+}
+
+function populateDistrictDropdowns() {
+    const setupSelect = document.getElementById('setupDistrict');
+    const profileSelect = document.getElementById('profileDistrict');
+    const mapSelect = document.getElementById('mapDistrictSelector');
+
+    let html = '';
+    Object.keys(tnDistricts).forEach(name => {
+        html += `<option value="${name}">${name}</option>`;
     });
+
+    if (setupSelect) setupSelect.innerHTML = html;
+    if (profileSelect) profileSelect.innerHTML = html;
+    if (mapSelect) mapSelect.innerHTML = html;
+}
+
+// =========================================================================
+// NAVIGATION & SECTION SWITCHING
+// =========================================================================
+function renderSidebarNav() {
+    const navMenu = document.getElementById('navMenu');
+    if (!navMenu) return;
+
+    if (!currentUser) {
+        // Landing Page / Unauthenticated Nav
+        navMenu.innerHTML = `
+            <a href="#landing" class="nav-item active" onclick="showSection('landing')">
+                <i class="fa-solid fa-house"></i> <span>Home / App Intro</span>
+            </a>
+            <a href="#weather" class="nav-item" onclick="showSection('weather')">
+                <i class="fa-solid fa-cloud-sun-rain"></i> <span>Weather Map</span>
+            </a>
+            <a href="#auth" class="nav-item nav-highlight" onclick="openAuthModal('login')">
+                <i class="fa-solid fa-right-to-bracket"></i> <span>Sign In / Register</span>
+            </a>
+        `;
+        return;
+    }
+
+    // Logged In Farmer / Admin Nav
+    let html = `
+        <a href="#dashboard" class="nav-item ${activeSection === 'dashboard' ? 'active' : ''}" onclick="showSection('dashboard')">
+            <i class="fa-solid fa-chart-line"></i> <span data-i18n="nav.dashboard">Dashboard</span>
+        </a>
+        <a href="#advisory" class="nav-item ${activeSection === 'advisory' ? 'active' : ''}" onclick="showSection('advisory')">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="nav.advisory">Get Advisory</span>
+        </a>
+        <a href="#history" class="nav-item ${activeSection === 'history' ? 'active' : ''}" onclick="showSection('history')">
+            <i class="fa-solid fa-clock-rotate-left"></i> <span data-i18n="nav.history">Advisory History</span>
+        </a>
+        <a href="#weather" class="nav-item ${activeSection === 'weather' ? 'active' : ''}" onclick="showSection('weather')">
+            <i class="fa-solid fa-map-location-dot"></i> <span data-i18n="nav.weather">Weather Map</span>
+        </a>
+        <a href="#alerts" class="nav-item ${activeSection === 'alerts' ? 'active' : ''}" onclick="showSection('alerts')">
+            <i class="fa-solid fa-triangle-exclamation"></i> <span data-i18n="nav.alerts">Risk Alerts</span>
+        </a>
+        <a href="#water" class="nav-item ${activeSection === 'water' ? 'active' : ''}" onclick="showSection('water')">
+            <i class="fa-solid fa-faucet-drip"></i> <span data-i18n="nav.water">Water Allocation</span>
+        </a>
+        <a href="#profile" class="nav-item ${activeSection === 'profile' ? 'active' : ''}" onclick="showSection('profile')">
+            <i class="fa-solid fa-user-gear"></i> <span data-i18n="nav.profile">Farm Profile</span>
+        </a>
+    `;
+
+    if (currentUser.role === 'ADMIN') {
+        html += `
+            <div class="sidebar-divider" style="border-top:1px solid var(--border-glass); margin: 12px 0;"></div>
+            <a href="#admin-crops" class="nav-item ${activeSection === 'admin-crops' ? 'active' : ''}" onclick="showSection('admin-crops')">
+                <i class="fa-solid fa-wheat-awn"></i> <span data-i18n="nav.adminCrops">Manage Crops (Admin)</span>
+            </a>
+            <a href="#admin-farmers" class="nav-item ${activeSection === 'admin-farmers' ? 'active' : ''}" onclick="showSection('admin-farmers')">
+                <i class="fa-solid fa-users"></i> <span data-i18n="nav.adminFarmers">All Farmers (Admin)</span>
+            </a>
+        `;
+    }
+
+    html += `
+        <div class="sidebar-divider" style="border-top:1px solid var(--border-glass); margin: 12px 0;"></div>
+        <a href="#logout" class="nav-item text-danger" onclick="handleLogout()">
+            <i class="fa-solid fa-right-from-bracket"></i> <span data-i18n="nav.logout">Sign Out</span>
+        </a>
+    `;
+
+    navMenu.innerHTML = html;
+    i18n.applyDOMTranslations();
 }
 
 function showSection(sectionId) {
+    if (!currentUser && sectionId !== 'landing' && sectionId !== 'weather') {
+        openAuthModal('login');
+        return;
+    }
+
     activeSection = sectionId;
-    
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    
-    let navId = 'nav-dashboard';
-    if (sectionId === 'advisory') navId = 'nav-advisory';
-    else if (sectionId === 'farmers') navId = 'nav-farmers';
-    else if (sectionId === 'crops') navId = 'nav-crops';
-    else if (sectionId === 'weather') navId = 'nav-weather';
-    
-    const targetLink = document.getElementById(navId);
-    if (targetLink) targetLink.classList.add('active');
 
-    const sections = {
-        'dashboard': 'section-dashboard',
-        'advisory': 'section-advisory',
-        'farmers': 'section-farmers',
-        'crops': 'section-crops',
-        'weather': 'section-weather'
-    };
-
-    Object.keys(sections).forEach(key => {
-        const el = document.getElementById(sections[key]);
-        if (el) {
-            if (key === sectionId) el.classList.remove('d-none');
-            else el.classList.add('d-none');
-        }
+    document.querySelectorAll('.content-section').forEach(sec => {
+        sec.classList.remove('active');
     });
 
-    if (sectionId === 'farmers') loadFarmersList();
-    if (sectionId === 'crops') loadCropsList();
-    if (sectionId === 'weather') initOrUpdateMap();
+    const target = document.getElementById(`section-${sectionId}`);
+    if (target) {
+        target.classList.add('active');
+    }
+
+    renderSidebarNav();
+
+    // Trigger specific page initializations
+    if (sectionId === 'dashboard') loadDashboardData();
+    if (sectionId === 'history') loadAdvisoryHistory();
+    if (sectionId === 'weather') initWeatherMap();
+    if (sectionId === 'alerts') loadLiveAlerts();
+    if (sectionId === 'profile') fillProfileForm();
+    if (sectionId === 'admin-crops') loadAdminCrops();
+    if (sectionId === 'admin-farmers') loadAdminFarmers();
 }
 
-// Global Data Refresh
-async function refreshAllData() {
-    try {
-        await fetchStats();
-        await fetchCropsDropdown();
-        await fetchFarmersDropdown();
-        if (activeSection === 'crops') loadCropsList();
-        if (activeSection === 'farmers') loadFarmersList();
-        
-        // Auto-load weather for first farmer
-        if (farmersCache.length > 0) {
-            loadFarmerWeather(farmersCache[0].id);
-        }
-    } catch (err) {
-        console.error("Error syncing data with backend: ", err);
+function updateAuthHeader() {
+    const container = document.getElementById('authHeaderContainer');
+    if (!container) return;
+
+    if (currentUser) {
+        const name = currentFarmer ? currentFarmer.name : currentUser.username;
+        container.innerHTML = `
+            <div class="btn-auth-pill logged-in" onclick="showSection('profile')">
+                <i class="fa-solid fa-user-check"></i>
+                <span>${escapeHtml(name)} (${currentUser.role})</span>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <button class="btn-auth-pill" onclick="openAuthModal('login')">
+                <i class="fa-solid fa-circle-user"></i>
+                <span data-i18n="landing.signInBtn">Sign In / Account</span>
+            </button>
+        `;
+        i18n.applyDOMTranslations();
     }
 }
 
-// Fetch Stats Count
-async function fetchStats() {
-    try {
-        const res = await fetch(`${API_BASE}/status`);
-        const status = await res.json();
-        
-        const cropsStat = document.getElementById('stat-crops');
-        const farmersStat = document.getElementById('stat-farmers');
+// =========================================================================
+// AUTHENTICATION MODAL & LOGIC
+// =========================================================================
+function openAuthModal(tab = 'login') {
+    switchAuthTab(tab);
+    document.getElementById('authModal').classList.add('active');
+}
 
-        if (cropsStat) cropsStat.textContent = status.cropsCount;
-        if (farmersStat) farmersStat.textContent = status.farmersCount;
-    } catch (err) {
-        console.error("Failed to fetch status:", err);
+function closeAuthModal() {
+    document.getElementById('authModal').classList.remove('active');
+}
+
+function switchAuthTab(tab) {
+    const loginBtn = document.getElementById('loginTabBtn');
+    const signupBtn = document.getElementById('signupTabBtn');
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    const title = document.getElementById('authModalTitle');
+
+    if (tab === 'login') {
+        loginBtn.classList.add('active');
+        signupBtn.classList.remove('active');
+        loginForm.classList.remove('hidden');
+        signupForm.classList.add('hidden');
+        if (title) title.textContent = i18n.t('auth.signInTitle');
+    } else {
+        signupBtn.classList.add('active');
+        loginBtn.classList.remove('active');
+        signupForm.classList.remove('hidden');
+        loginForm.classList.add('hidden');
+        if (title) title.textContent = i18n.t('auth.signUpTitle');
     }
 }
 
-// Populate Farmer Dropdowns across Dashboard, Advisory, and Map
-async function fetchFarmersDropdown() {
+function quickFillDemo(username, pin) {
+    openAuthModal('login');
+    document.getElementById('loginUsername').value = username;
+    document.getElementById('loginPin').value = pin;
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('loginUsername').value.trim();
+    const pin = document.getElementById('loginPin').value.trim();
+
     try {
-        const res = await fetch(`${API_BASE}/farmers`);
-        const farmers = await res.json();
-        farmersCache = farmers;
-
-        const advisorySelect = document.getElementById('advisory-farmer');
-        const dashWeatherSelect = document.getElementById('dashboard-farmer-select');
-        const mapSelect = document.getElementById('map-farmer-select');
-
-        if (advisorySelect) {
-            const currentVal = advisorySelect.value;
-            advisorySelect.innerHTML = `<option value="" disabled selected>${i18n.t('advisory.selectFarmerPlaceholder')}</option>`;
-            farmers.forEach(f => {
-                const soilName = i18n.lookup('soils', f.soil);
-                advisorySelect.innerHTML += `<option value="${f.id}">${f.name} (${f.id}) - ${f.acres} Acres, ${f.location || soilName}</option>`;
-            });
-            if (currentVal) advisorySelect.value = currentVal;
-        }
-
-        [dashWeatherSelect, mapSelect].forEach(select => {
-            if (select) {
-                const currentVal = select.value;
-                select.innerHTML = '';
-                farmers.forEach(f => {
-                    select.innerHTML += `<option value="${f.id}">${f.name} - ${f.location || 'Punjab'}</option>`;
-                });
-                if (currentVal) select.value = currentVal;
-            }
+        const res = await fetchApi('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, pin })
         });
-    } catch (err) {
-        console.error("Error loading farmers dropdown:", err);
-    }
-}
 
-// Populate Crops Cache
-async function fetchCropsDropdown() {
-    try {
-        const res = await fetch(`${API_BASE}/crops`);
-        const crops = await res.json();
-        cropsCache = crops;
-    } catch (err) {
-        console.error("Error loading crops cache:", err);
-    }
-}
+        sessionToken = res.token;
+        currentUser = res.user;
+        currentFarmer = res.farmer;
+        localStorage.setItem('authToken', sessionToken);
 
-// =========================================================================
-// REAL OPEN-METEO WEATHER INTEGRATION & LEAFLET MAP
-// =========================================================================
+        if (currentUser.language) {
+            await i18n.setLanguage(currentUser.language, true);
+        }
 
-async function loadFarmerWeather(farmerId) {
-    const farmer = farmersCache.find(f => f.id === farmerId) || farmersCache[0];
-    if (!farmer) return;
+        closeAuthModal();
+        updateAuthHeader();
+        renderSidebarNav();
 
-    const lat = farmer.latitude || 30.90;
-    const lon = farmer.longitude || 75.85;
-
-    try {
-        const res = await fetch(`${API_BASE}/weather?lat=${lat}&lon=${lon}`);
-        const data = await res.json();
-
-        renderWeatherMetrics(data, farmer);
-        if (activeSection === 'weather') {
-            renderMapForFarmer(farmerId, data);
+        if (!currentFarmer || currentFarmer.acres <= 0) {
+            showSection('profile-setup');
+        } else {
+            showSection('dashboard');
         }
     } catch (err) {
-        console.error("Failed to load Open-Meteo weather data:", err);
+        alert(err.message || 'Login failed.');
     }
 }
 
-function renderWeatherMetrics(data, farmer) {
-    if (!data || !data.current) return;
+async function handleSignup(e) {
+    e.preventDefault();
+    const name = document.getElementById('signupName').value.trim();
+    const username = document.getElementById('signupUsername').value.trim();
+    const pin = document.getElementById('signupPin').value.trim();
+    const lang = i18n.currentLang;
 
-    const curr = data.current;
-    const daily = data.daily || {};
+    try {
+        const res = await fetchApi('/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ name, username, pin, language: lang })
+        });
 
-    const tempEl = document.getElementById('dash-temp');
-    const humEl = document.getElementById('dash-humidity');
-    const rainEl = document.getElementById('dash-rain');
-    const windEl = document.getElementById('dash-wind');
-    const tickerText = document.getElementById('weather-ticker-text');
+        sessionToken = res.token;
+        currentUser = res.user;
+        currentFarmer = res.farmer;
+        localStorage.setItem('authToken', sessionToken);
 
-    if (tempEl) tempEl.textContent = `${curr.temperature_2m.toFixed(1)} °C`;
-    if (humEl) humEl.textContent = `${curr.relative_humidity_2m} %`;
-    
-    const maxRainProb = daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : 10;
-    if (rainEl) rainEl.textContent = `${maxRainProb} %`;
-    if (windEl) windEl.textContent = `${curr.wind_speed_10m.toFixed(1)} km/h`;
+        closeAuthModal();
+        updateAuthHeader();
+        renderSidebarNav();
 
-    // Ticker Text Update
-    if (tickerText) {
-        let alertMsg = `Location: ${farmer.location || 'Punjab'} | Temp: ${curr.temperature_2m}°C | Wind: ${curr.wind_speed_10m} km/h | Rain Chance: ${maxRainProb}%`;
-        if (curr.temperature_2m > 38) alertMsg += " | ⚠️ HEATWAVE WARNING: Irrigate fields early morning!";
-        if (maxRainProb > 60) alertMsg += " | 🌧️ HEAVY RAIN EXPECTED: Check field drainage!";
-        tickerText.textContent = alertMsg;
+        // Direct first-time user to Farm Profile Setup
+        showSection('profile-setup');
+    } catch (err) {
+        alert(err.message || 'Registration failed.');
+    }
+}
+
+async function handleLogout() {
+    try {
+        if (sessionToken) {
+            await fetchApi('/auth/logout', { method: 'POST' });
+        }
+    } catch (e) {}
+
+    sessionToken = null;
+    currentUser = null;
+    currentFarmer = null;
+    localStorage.removeItem('authToken');
+    updateAuthHeader();
+    renderSidebarNav();
+    showSection('landing');
+}
+
+// =========================================================================
+// FARM PROFILE SETUP & EDIT
+// =========================================================================
+function onSetupDistrictChange(districtName) {
+    const distInfo = tnDistricts[districtName];
+    if (distInfo) {
+        const setupSoil = document.getElementById('setupSoil');
+        const profileSoil = document.getElementById('profileSoil');
+        if (setupSoil) setupSoil.value = distInfo.defaultSoil;
+        if (profileSoil) profileSoil.value = distInfo.defaultSoil;
+    }
+}
+
+function onSetupAcresChange(acresVal) {
+    const val = parseFloat(acresVal) || 0;
+    const banner = document.getElementById('categoryPreviewText');
+    if (!banner) return;
+
+    if (val <= 5.0) {
+        banner.textContent = i18n.t('profileSetup.smallBadge');
+    } else {
+        banner.textContent = i18n.t('profileSetup.largeBadge');
+    }
+}
+
+async function saveFarmProfile(e) {
+    e.preventDefault();
+    const isEdit = activeSection === 'profile';
+    const name = document.getElementById(isEdit ? 'profileName' : 'setupDistrict').form ?
+                 (isEdit ? document.getElementById('profileName').value : (currentFarmer ? currentFarmer.name : currentUser.username)) : '';
+    const district = document.getElementById(isEdit ? 'profileDistrict' : 'setupDistrict').value;
+    const soil = document.getElementById(isEdit ? 'profileSoil' : 'setupSoil').value;
+    const acres = parseFloat(document.getElementById(isEdit ? 'profileAcres' : 'setupAcres').value) || 3.5;
+    const water = document.getElementById(isEdit ? 'profileWater' : 'setupWater').value;
+    const source = document.getElementById(isEdit ? 'profileSource' : 'setupSource').value;
+
+    try {
+        const res = await fetchApi('/me', {
+            method: 'PUT',
+            body: JSON.stringify({
+                name: name.trim(),
+                district,
+                soil,
+                acres,
+                water,
+                irrigationSource: source,
+                language: i18n.currentLang
+            })
+        });
+
+        currentUser = res.user;
+        currentFarmer = res.farmer;
+        updateAuthHeader();
+
+        alert(i18n.t('messages.profileSaved'));
+        showSection('dashboard');
+    } catch (err) {
+        alert(err.message || 'Failed to save profile.');
+    }
+}
+
+function fillProfileForm() {
+    if (!currentFarmer) return;
+    const nameEl = document.getElementById('profileName');
+    const distEl = document.getElementById('profileDistrict');
+    const soilEl = document.getElementById('profileSoil');
+    const acresEl = document.getElementById('profileAcres');
+    const waterEl = document.getElementById('profileWater');
+    const sourceEl = document.getElementById('profileSource');
+
+    if (nameEl) nameEl.value = currentFarmer.name;
+    if (distEl) distEl.value = currentFarmer.district;
+    if (soilEl) soilEl.value = currentFarmer.soil;
+    if (acresEl) acresEl.value = currentFarmer.acres;
+    if (waterEl) waterEl.value = currentFarmer.water;
+    if (sourceEl) sourceEl.value = currentFarmer.irrigationSource || 'Canal';
+}
+
+// =========================================================================
+// DASHBOARD RENDERING
+// =========================================================================
+async function loadDashboardData() {
+    if (!currentFarmer) return;
+
+    // Render Farmer Profile Summary
+    document.getElementById('dashFarmerName').textContent = currentFarmer.name;
+    document.getElementById('dashDistrict').textContent = currentFarmer.district;
+    document.getElementById('dashSoil').textContent = i18n.t(`soils.${currentFarmer.soil}`, { default: currentFarmer.soil });
+    document.getElementById('dashAcres').textContent = `${currentFarmer.acres} Acres`;
+    document.getElementById('dashWater').textContent = i18n.t(`waterLevels.${currentFarmer.water}`, { default: currentFarmer.water });
+    document.getElementById('dashCategory').textContent = currentFarmer.type;
+    document.getElementById('dashSubsidyRate').textContent = `${Math.round(currentFarmer.subsidyRate * 100)}% NPK Subsidy`;
+
+    document.getElementById('weatherDistBadge').textContent = currentFarmer.district;
+
+    // Load Live Weather for Farmer's District
+    try {
+        const weather = await fetchApi(`/weather?district=${encodeURIComponent(currentFarmer.district)}`);
+        if (weather && weather.current) {
+            document.getElementById('dashTemp').textContent = `${weather.current.temperature_2m} °C`;
+            document.getElementById('dashHumidity').textContent = `${weather.current.relative_humidity_2m} %`;
+            document.getElementById('dashWind').textContent = `${weather.current.wind_speed_10m} km/h`;
+            if (weather.daily && weather.daily.precipitation_probability_max) {
+                document.getElementById('dashRain').textContent = `${weather.daily.precipitation_probability_max[0]} %`;
+            }
+        }
+    } catch (e) {}
+}
+
+// =========================================================================
+// GET ADVISORY ENGINE
+// =========================================================================
+async function runPersonalAdvisory() {
+    if (!currentFarmer || currentFarmer.acres <= 0) {
+        alert('Please complete your Farm Profile Setup first.');
+        showSection('profile-setup');
+        return;
     }
 
-    // Render 5-Day Forecast Strip
-    const forecastStrip = document.getElementById('dashboard-forecast-strip');
-    if (forecastStrip && daily.time) {
-        forecastStrip.innerHTML = '';
-        for (let i = 0; i < Math.min(5, daily.time.length); i++) {
-            const dateStr = new Date(daily.time[i]).toLocaleDateString(i18n.currentLang, { weekday: 'short', month: 'numeric', day: 'numeric' });
-            const maxT = daily.temperature_2m_max[i].toFixed(0);
-            const minT = daily.temperature_2m_min[i].toFixed(0);
-            const rainP = daily.precipitation_probability_max[i];
+    const season = document.getElementById('advisorySeason').value;
+    const resultsWrapper = document.getElementById('advisoryResultsContainer');
 
-            let iconClass = 'fa-sun text-warning';
-            if (rainP > 50) iconClass = 'fa-cloud-showers-heavy text-blue';
-            else if (rainP > 20) iconClass = 'fa-cloud-sun text-info';
+    try {
+        const report = await fetchApi('/advisory', {
+            method: 'POST',
+            body: JSON.stringify({ season })
+        });
 
-            forecastStrip.innerHTML += `
-                <div class="f-day-card">
-                    <span class="f-day-title">${dateStr}</span>
-                    <i class="fa-solid ${iconClass} f-icon"></i>
-                    <span class="f-temp">${maxT}° / ${minT}°</span>
-                    <span class="f-rain">💧 ${rainP}%</span>
+        // Show Results Wrapper
+        resultsWrapper.classList.remove('hidden');
+
+        // Render Top Recommended Crop Hero
+        const top = report.topCrop;
+        if (top) {
+            document.getElementById('topCropName').textContent = top.name;
+            document.getElementById('topCropClassification').textContent = top.classification;
+            document.getElementById('topCropScore').textContent = report.rankedCrops[0] ? report.rankedCrops[0].score : 90;
+
+            document.getElementById('topYield').textContent = `${report.expectedYield.toFixed(2)} Qt (for ${currentFarmer.acres} Acres)`;
+            document.getElementById('topUrea').textContent = `${report.ureaKg.toFixed(1)} Kg`;
+            document.getElementById('topDap').textContent = `${report.dapKg.toFixed(1)} Kg`;
+            document.getElementById('topMop').textContent = `${report.mopKg.toFixed(1)} Kg`;
+
+            document.getElementById('finGrossCost').textContent = `₹${report.grossFertilizerCost.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finSubsidy').textContent = `-₹${report.subsidySavings.toLocaleString('en-IN', {minimumFractionDigits: 2})} (${Math.round(currentFarmer.subsidyRate * 100)}%)`;
+            document.getElementById('finNetCost').textContent = `₹${report.netFertilizerCost.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finSeedCost').textContent = `₹${report.seedCost.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finLaborCost').textContent = `₹${report.laborCost.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finTotalCost').textContent = `₹${report.totalInputCost.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finRevenue').textContent = `₹${report.grossRevenue.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finProfit').textContent = `₹${report.netProfit.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('finRoi').textContent = `${report.roiPercent.toFixed(2)}%`;
+        }
+
+        // Render Advice Notes
+        const notesList = document.getElementById('adviceNotesList');
+        if (notesList) {
+            notesList.innerHTML = report.adviceNotes.map(n => `<li><i class="fa-solid fa-angle-right text-success"></i> ${escapeHtml(n)}</li>`).join('');
+        }
+
+        // Render Schemes List
+        const schemesList = document.getElementById('schemesList');
+        if (schemesList) {
+            schemesList.innerHTML = report.applicableSchemes.map(s => `<li><i class="fa-solid fa-check text-primary"></i> ${escapeHtml(s)}</li>`).join('');
+        }
+
+        // Render Ranked Crops Table
+        const tbody = document.getElementById('rankedCropsTableBody');
+        if (tbody) {
+            tbody.innerHTML = report.rankedCrops.map((c, i) => `
+                <tr>
+                    <td><strong>#${i + 1}</strong></td>
+                    <td><strong class="text-primary">${escapeHtml(c.cropName)}</strong></td>
+                    <td>${escapeHtml(c.type)}</td>
+                    <td><span class="badge ${c.score >= 80 ? 'badge-success' : 'badge-warning'}">${c.score}%</span></td>
+                    <td>${c.yield.toFixed(1)} Qt</td>
+                    <td><small class="text-secondary">${escapeHtml(c.reason)}</small></td>
+                </tr>
+            `).join('');
+        }
+    } catch (err) {
+        alert(err.message || 'Failed to generate advisory.');
+    }
+}
+
+// =========================================================================
+// ADVISORY HISTORY
+// =========================================================================
+async function loadAdvisoryHistory() {
+    const tbody = document.getElementById('historyTableBody');
+    if (!tbody) return;
+
+    try {
+        const history = await fetchApi('/advisories');
+        if (!history || history.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-secondary py-4" data-i18n="history.empty">No past advisory reports found. Click 'Get Advisory' to generate your first report!</td></tr>`;
+            i18n.applyDOMTranslations();
+            return;
+        }
+
+        tbody.innerHTML = history.map(item => `
+            <tr>
+                <td>${new Date(item.date).toLocaleDateString()}</td>
+                <td><strong class="text-success">${escapeHtml(item.cropName)}</strong></td>
+                <td>${escapeHtml(item.season)}</td>
+                <td><span class="badge badge-success">${item.score}%</span></td>
+                <td class="text-success">₹${item.profit ? item.profit.toLocaleString('en-IN', {minimumFractionDigits: 2}) : '--'}</td>
+                <td class="text-warning">${item.roi ? item.roi.toFixed(1) : '--'}%</td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="viewAdvisoryDetail('${item.id}')">
+                        <i class="fa-solid fa-eye"></i> <span data-i18n="history.viewReport">View Report</span>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        i18n.applyDOMTranslations();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Failed to load advisory history.</td></tr>`;
+    }
+}
+
+async function viewAdvisoryDetail(recordId) {
+    try {
+        const item = await fetchApi(`/advisories/${recordId}`);
+        const modalBody = document.getElementById('reportModalBody');
+
+        modalBody.innerHTML = `
+            <div class="report-detail-card">
+                <div class="flex-between border-bottom pb-3 mb-3">
+                    <div>
+                        <h3>Report ID: ${item.id}</h3>
+                        <p class="text-secondary">Date: ${new Date(item.date).toLocaleString()}</p>
+                    </div>
+                    <span class="badge badge-success btn-lg">${item.score}% Match Score</span>
                 </div>
-            `;
-        }
+
+                <div class="form-grid mb-3">
+                    <div class="detail-item"><span>Recommended Crop:</span> <strong>${escapeHtml(item.cropName)}</strong></div>
+                    <div class="detail-item"><span>Season:</span> <strong>${escapeHtml(item.season)}</strong></div>
+                    <div class="detail-item"><span>Estimated Yield:</span> <strong>${item.yield.toFixed(2)} Qt</strong></div>
+                    <div class="detail-item"><span>Net Fertilizer Cost:</span> <strong>₹${item.netCost.toLocaleString('en-IN')}</strong></div>
+                    <div class="detail-item"><span>Gross Revenue:</span> <strong>₹${item.revenue.toLocaleString('en-IN')}</strong></div>
+                    <div class="detail-item"><span>Estimated Net Profit:</span> <strong class="text-success">₹${item.profit.toLocaleString('en-IN')}</strong></div>
+                    <div class="detail-item span-2"><span>Return on Investment (ROI):</span> <strong class="text-warning">${item.roi.toFixed(2)}%</strong></div>
+                </div>
+
+                ${item.notes ? `
+                    <div class="card inner-card mt-3">
+                        <h4>Advice Notes & Telemetry</h4>
+                        <pre style="white-space:pre-wrap; font-family:inherit; color:var(--text-secondary);">${escapeHtml(item.notes)}</pre>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        document.getElementById('reportModal').classList.add('active');
+    } catch (err) {
+        alert('Failed to load advisory detail.');
     }
 }
 
-function initOrUpdateMap() {
-    const select = document.getElementById('map-farmer-select');
-    const farmerId = select ? select.value || (farmersCache[0] ? farmersCache[0].id : null) : null;
-    if (farmerId) renderMapForFarmer(farmerId);
+function closeReportModal() {
+    document.getElementById('reportModal').classList.remove('active');
 }
 
-function renderMapForFarmer(farmerId, weatherData = null) {
-    const farmer = farmersCache.find(f => f.id === farmerId) || farmersCache[0];
-    if (!farmer) return;
-
-    const lat = farmer.latitude || 30.90;
-    const lon = farmer.longitude || 75.85;
-
-    const mapContainer = document.getElementById('leaflet-map');
-    if (!mapContainer) return;
+// =========================================================================
+// WEATHER MAP ENGINE (LEAFLET.JS)
+// =========================================================================
+function initWeatherMap() {
+    const container = document.getElementById('leafletMap');
+    if (!container) return;
 
     if (!leafletMap) {
-        leafletMap = L.map('leaflet-map').setView([lat, lon], 10);
+        // Center map on Tamil Nadu (10.7870, 78.6569, zoom level 7)
+        leafletMap = L.map('leafletMap').setView([10.7870, 78.6569], 7);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap contributors'
         }).addTo(leafletMap);
-    } else {
-        leafletMap.setView([lat, lon], 10);
+
+        // Add Circle Markers for 15 Districts
+        Object.values(tnDistricts).forEach(dist => {
+            const isHome = currentFarmer && currentFarmer.district === dist.name;
+            const circle = L.circleMarker([dist.lat, dist.lon], {
+                radius: isHome ? 12 : 8,
+                color: isHome ? '#f59e0b' : '#10b981',
+                fillColor: isHome ? '#f59e0b' : '#10b981',
+                fillOpacity: 0.8,
+                weight: isHome ? 3 : 1
+            }).addTo(leafletMap);
+
+            circle.bindPopup(`<b>${dist.name} District</b><br>Soil: ${dist.defaultSoil}`);
+            circle.on('click', () => onMapDistrictSelect(dist.name));
+
+            leafletMarkers[dist.name] = circle;
+        });
     }
 
-    if (leafletMarker) {
-        leafletMap.removeLayer(leafletMarker);
+    const homeDist = currentFarmer ? currentFarmer.district : 'Thanjavur';
+    const banner = document.getElementById('mapHighlightBanner');
+    if (banner) {
+        banner.innerHTML = `<i class="fa-solid fa-star text-warning"></i> <span>Your home district (<strong>${homeDist}</strong>) is highlighted on the map!</span>`;
     }
 
-    const popupContent = `
-        <div style="font-family:sans-serif; padding:4px;">
-            <strong style="font-size:14px; color:#0f172a;">${farmer.name}</strong><br/>
-            <span style="font-size:12px; color:#475569;">📍 ${farmer.location || 'Punjab'}</span><br/>
-            <span style="font-size:12px; color:#059669;">🌾 ${farmer.acres} Acres (${farmer.soil} Soil)</span>
-        </div>
-    `;
-
-    leafletMarker = L.marker([lat, lon]).addTo(leafletMap)
-        .bindPopup(popupContent)
-        .openPopup();
+    onMapDistrictSelect(homeDist);
 }
 
-// Load Farmers Registry Table
-async function loadFarmersList() {
+async function onMapDistrictSelect(districtName) {
+    currentMapDistrict = districtName;
+    const selectEl = document.getElementById('mapDistrictSelector');
+    if (selectEl) selectEl.value = districtName;
+
+    const distInfo = tnDistricts[districtName];
+    if (distInfo && leafletMap) {
+        leafletMap.panTo([distInfo.lat, distInfo.lon]);
+        if (leafletMarkers[districtName]) {
+            leafletMarkers[districtName].openPopup();
+        }
+    }
+
+    // Fetch Live Open-Meteo Weather for selected district
+    document.getElementById('panelDistrictTitle').textContent = `${districtName} District`;
     try {
-        const res = await fetch(`${API_BASE}/farmers`);
-        const farmers = await res.json();
-        farmersCache = farmers;
+        const weather = await fetchApi(`/weather?district=${encodeURIComponent(districtName)}`);
+        if (weather && weather.current) {
+            document.getElementById('panelTemp').textContent = `${weather.current.temperature_2m} °C`;
+            document.getElementById('panelHumidity').textContent = `${weather.current.relative_humidity_2m} %`;
+            document.getElementById('panelWind').textContent = `${weather.current.wind_speed_10m} km/h`;
+            if (weather.daily && weather.daily.precipitation_probability_max) {
+                document.getElementById('panelRain').textContent = `${weather.daily.precipitation_probability_max[0]} %`;
+            }
 
-        const tbody = document.getElementById('farmers-table-body');
-        if (!tbody) return;
-        tbody.innerHTML = '';
+            // Render 5-Day Forecast
+            const forecastList = document.getElementById('forecastList');
+            if (forecastList && weather.daily && weather.daily.time) {
+                forecastList.innerHTML = weather.daily.time.slice(0, 5).map((dateStr, i) => `
+                    <div class="forecast-item">
+                        <span>${dateStr}</span>
+                        <span>Max ${weather.daily.temperature_2m_max[i]}°C / Min ${weather.daily.temperature_2m_min[i]}°C</span>
+                        <strong class="text-info">Rain ${weather.daily.precipitation_probability_max[i]}%</strong>
+                    </div>
+                `).join('');
+            }
+        }
+    } catch (e) {}
+}
 
-        if (farmers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="text-muted text-center">No registered farmers found.</td></tr>`;
-            return;
+// =========================================================================
+// RISK ALERTS BOARD
+// =========================================================================
+async function loadLiveAlerts() {
+    try {
+        const dist = currentFarmer ? currentFarmer.district : '';
+        const alerts = await fetchApi(`/alerts?district=${encodeURIComponent(dist)}`);
+
+        // Update Ticker
+        const ticker = document.getElementById('weatherTickerText');
+        if (ticker && alerts.length > 0) {
+            ticker.textContent = alerts.join(' | ');
         }
 
-        farmers.forEach(f => {
-            const isSmall = f.acres <= 5.0;
-            const typeLabel = isSmall ? i18n.t('farmers.typeSmall') : i18n.t('farmers.typeLarge');
-            const subsidyPct = (f.subsidyRate * 100).toFixed(0);
-
-            const soilLabel = i18n.lookup('soils', f.soil);
-            const waterLabel = i18n.lookup('waterLevels', f.water);
-
-            tbody.innerHTML += `
-                <tr>
-                    <td><strong>${f.id}</strong></td>
-                    <td>${f.name}</td>
-                    <td><span class="badge ${isSmall ? 'badge-pulse' : ''}">${typeLabel}</span></td>
-                    <td>${f.acres} Acres</td>
-                    <td>${f.location || 'Punjab'}</td>
-                    <td>${soilLabel}</td>
-                    <td>${waterLabel}</td>
-                    <td><strong class="text-success">${subsidyPct}% Discount</strong></td>
-                    <td>
-                        <button class="btn btn-secondary btn-sm" onclick="viewHistory('${f.id}')">
-                            <i class="fa-solid fa-clock-rotate-left"></i> ${i18n.t('farmers.historyBtn')}
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
-    } catch (err) {
-        console.error("Error loading farmers table:", err);
-    }
-}
-
-// Load Crop Catalog Table
-async function loadCropsList() {
-    try {
-        const res = await fetch(`${API_BASE}/crops`);
-        const crops = await res.json();
-        cropsCache = crops;
-
-        const tbody = document.getElementById('crops-table-body');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-
-        if (crops.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-muted text-center">No crops found in catalog.</td></tr>`;
-            return;
+        // Update Alert Board List
+        const board = document.getElementById('alertBoardList');
+        if (board) {
+            board.innerHTML = alerts.map(a => `
+                <div class="card inner-card mb-2" style="border-left: 4px solid var(--theme-warning);">
+                    <div class="flex-between">
+                        <div><i class="fa-solid fa-triangle-exclamation text-warning"></i> <strong>${escapeHtml(a)}</strong></div>
+                        <small class="text-secondary">Live Telemetry</small>
+                    </div>
+                </div>
+            `).join('');
         }
-
-        crops.forEach(crop => {
-            const isCash = crop.type === 'CashCrop';
-            const typeLabel = isCash ? i18n.t('crops.typeCash') : i18n.t('crops.typeFood');
-            const cropLocalizedName = i18n.lookup('cropNames', crop.name);
-            const seasonLabel = i18n.lookup('seasons', crop.season);
-            const waterLabel = i18n.lookup('waterLevels', crop.water);
-
-            const soilsList = crop.soils.map(s => {
-                const localizedSoil = i18n.lookup('soils', s);
-                return `<span class="badge" style="background: rgba(255,255,255,0.08); margin-right:4px;">${localizedSoil}</span>`;
-            }).join('');
-
-            const marketPrice = crop.marketPrice ? `₹${crop.marketPrice.toFixed(0)}` : '₹20,000';
-
-            tbody.innerHTML += `
-                <tr>
-                    <td><strong>${cropLocalizedName}</strong></td>
-                    <td><span class="badge">${typeLabel}</span></td>
-                    <td>${seasonLabel}</td>
-                    <td>${waterLabel}</td>
-                    <td>${crop.yield} Tons/Ac</td>
-                    <td><strong class="text-success">${marketPrice}</strong></td>
-                    <td>${soilsList}</td>
-                    <td>U: ${crop.urea} | D: ${crop.dap} | M: ${crop.mop} Kg</td>
-                </tr>
-            `;
-        });
-    } catch (err) {
-        console.error("Error loading crops table:", err);
-    }
+    } catch (e) {}
 }
 
-// Execute Suitability Analysis & Render Multilingual Receipt with ROI & Schemes
-async function runAdvisory(event) {
-    event.preventDefault();
-    const farmerId = document.getElementById('advisory-farmer').value;
-    const season = document.getElementById('advisory-season').value;
+// =========================================================================
+// WATER ALLOCATION CONCURRENCY SIMULATION
+// =========================================================================
+async function triggerWaterSimulation() {
+    const consoleEl = document.getElementById('waterLogsConsole');
+    if (!consoleEl) return;
 
-    if (!farmerId || !season) {
-        alert(i18n.t('messages.fillAllFields'));
-        return;
-    }
+    consoleEl.textContent = 'Launching 5-thread Java canal sluice gate simulation...\nWaiting for CountDownLatch synchronization...';
 
     try {
-        const res = await fetch(`${API_BASE}/advisory`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ farmerId, season })
-        });
-
-        if (!res.ok) {
-            const errData = await res.json();
-            alert(i18n.t('messages.errorOccurred') + (errData.error || 'Server Error'));
-            return;
-        }
-
-        const data = await res.json();
-        renderAdvisoryResults(data);
+        const res = await fetchApi('/water/simulate', { method: 'POST' });
+        consoleEl.textContent = res.logs || 'Simulation finished.';
     } catch (err) {
-        console.error("Advisory calculation error:", err);
-        alert(i18n.t('messages.errorOccurred') + err.message);
+        consoleEl.textContent = `Simulation Error: ${err.message}`;
     }
 }
 
-// Render Advisory Results + Financial ROI Economics + Government Schemes
-function renderAdvisoryResults(data) {
-    const emptyState = document.getElementById('advisory-empty-state');
-    const resultsCard = document.getElementById('advisory-results-card');
+// =========================================================================
+// ADMIN AREA (CROP CATALOG & FARMER REGISTRY)
+// =========================================================================
+async function loadAdminCrops() {
+    const tbody = document.getElementById('adminCropsTableBody');
+    if (!tbody) return;
 
-    if (emptyState) emptyState.classList.add('d-none');
-    if (resultsCard) resultsCard.classList.remove('d-none');
-
-    const topBanner = document.getElementById('top-crop-banner');
-    const rankingItems = document.getElementById('crops-ranking-items');
-    const detailsPanel = document.getElementById('fertilizer-details-panel');
-    const roiPanel = document.getElementById('roi-economics-panel');
-    const schemesPanel = document.getElementById('schemes-panel');
-
-    const selectedFarmerId = document.getElementById('advisory-farmer')?.value;
-    const farmer = data.farmer || farmersCache.find(f => f.id === selectedFarmerId) || { acres: 1, subsidyRate: 0 };
-    const topResult = data.results && data.results.length > 0 ? data.results[0] : null;
-
-    if (!topResult) return;
-
-    const grossCostVal = data.grossFertilizerCost !== undefined ? data.grossFertilizerCost : 0;
-    const netCostVal = data.netFertilizerCost !== undefined ? data.netFertilizerCost : 0;
-    const ureaKgVal = data.ureaKg !== undefined ? data.ureaKg : 0;
-    const dapKgVal = data.dapKg !== undefined ? data.dapKg : 0;
-    const mopKgVal = data.mopKg !== undefined ? data.mopKg : 0;
-
-    const expectedRevenue = data.expectedRevenue !== undefined ? data.expectedRevenue : 0;
-    const seedCost = data.seedCost !== undefined ? data.seedCost : 0;
-    const laborCost = data.laborCost !== undefined ? data.laborCost : 0;
-    const totalInputCost = data.totalInputCost !== undefined ? data.totalInputCost : 0;
-    const netProfit = data.netProfit !== undefined ? data.netProfit : 0;
-    const roiPct = data.roiPct !== undefined ? data.roiPct : 0;
-
-    const cropName = i18n.lookup('cropNames', topResult.cropName);
-    const summaryText = i18n.t('advisory.summaryText', {
-        crop: cropName,
-        score: topResult.score,
-        acres: farmer.acres,
-        yield: topResult.yield,
-        netProfit: netProfit.toFixed(0),
-        roi: roiPct.toFixed(1)
-    });
-
-    topBanner.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <h4 style="font-size:18px; margin:0;"><i class="fa-solid fa-trophy"></i> ${i18n.t('advisory.topMatch')}: <strong>${cropName}</strong></h4>
-            <span style="font-size:24px; font-weight:800; background:rgba(255,255,255,0.2); padding:4px 14px; border-radius:12px;">${topResult.score}%</span>
-        </div>
-        <p style="font-size:14px; opacity:0.95; line-height:1.5;">${summaryText}</p>
-    `;
-
-    // Render Ranked List
-    rankingItems.innerHTML = '';
-    data.results.forEach((r, idx) => {
-        const rCropName = i18n.lookup('cropNames', r.cropName);
-        const isTop = idx === 0;
-        rankingItems.innerHTML += `
-            <div class="ranking-item ${isTop ? 'top-rank' : ''}">
-                <div>
-                    <strong>#${idx + 1} ${rCropName}</strong>
-                    <div style="font-size:11px; color:var(--text-muted);">${r.classification}</div>
-                </div>
-                <div style="text-align:right;">
-                    <strong style="color:${isTop ? 'var(--accent-green)' : 'var(--text-primary)'}; font-size:16px;">${r.score}%</strong>
-                    <div style="font-size:11px; color:var(--text-muted);">${r.yield} ${i18n.t('advisory.tons')}</div>
-                </div>
-            </div>
-        `;
-    });
-
-    // Render NPK Breakdown & Net Cost Receipt
-    const subsidyDiscount = grossCostVal - netCostVal;
-    detailsPanel.innerHTML = `
-        <h4 style="font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:8px;">
-            <i class="fa-solid fa-receipt"></i> ${i18n.t('advisory.resultTitle')}
-        </h4>
-        <div class="detail-row">
-            <span>${i18n.t('advisory.yieldEst')}</span>
-            <strong>${topResult.yield} ${i18n.t('advisory.tons')}</strong>
-        </div>
-        <div class="detail-row">
-            <span>${i18n.t('advisory.npkReq')}</span>
-            <strong>U: ${ureaKgVal.toFixed(1)} | D: ${dapKgVal.toFixed(1)} | M: ${mopKgVal.toFixed(1)} ${i18n.t('advisory.kg')}</strong>
-        </div>
-        <div class="detail-row">
-            <span>${i18n.t('advisory.grossCost')}</span>
-            <span>₹${grossCostVal.toFixed(2)}</span>
-        </div>
-        <div class="detail-row" style="color:var(--accent-green);">
-            <span>${i18n.t('advisory.subsidy')} (${((farmer.subsidyRate || 0) * 100).toFixed(0)}%)</span>
-            <span>- ₹${subsidyDiscount.toFixed(2)}</span>
-        </div>
-        <div class="detail-row net-payable">
-            <span>${i18n.t('advisory.netCost')}</span>
-            <span>₹${netCostVal.toFixed(2)}</span>
-        </div>
-    `;
-
-    // Render ROI Economics Card
-    if (roiPanel) {
-        const isProfit = netProfit >= 0;
-        roiPanel.innerHTML = `
-            <h4 style="font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:10px;">
-                <i class="fa-solid fa-chart-line text-success"></i> ${i18n.t('advisory.economicsTitle')}
-            </h4>
-            <div class="roi-grid">
-                <div class="roi-box">
-                    <span class="roi-box-val text-success">₹${expectedRevenue.toLocaleString('en-IN', {maximumFractionDigits: 0})}</span>
-                    <span class="roi-box-lbl">${i18n.t('advisory.expectedRevenue')}</span>
-                </div>
-                <div class="roi-box">
-                    <span class="roi-box-val text-warning">₹${totalInputCost.toLocaleString('en-IN', {maximumFractionDigits: 0})}</span>
-                    <span class="roi-box-lbl">${i18n.t('advisory.totalInputCost')}</span>
-                </div>
-                <div class="roi-box">
-                    <span class="roi-box-val ${isProfit ? 'text-success' : 'text-danger'}">₹${netProfit.toLocaleString('en-IN', {maximumFractionDigits: 0})}</span>
-                    <span class="roi-box-lbl">${i18n.t('advisory.netProfit')}</span>
-                </div>
-                <div class="roi-box">
-                    <span class="roi-box-val ${isProfit ? 'text-success' : 'text-danger'}">${roiPct.toFixed(1)}%</span>
-                    <span class="roi-box-lbl">${i18n.t('advisory.roi')}</span>
-                </div>
-            </div>
-        `;
-    }
-
-    // Render Government Schemes Card
-    if (schemesPanel) {
-        const schemesList = data.schemes || ['pmkisan', 'pmfby', 'smam'];
-        const schemesHTML = schemesList.map(s => `
-            <div class="scheme-item">
-                <span class="scheme-title"><i class="fa-solid fa-award"></i> ${i18n.t('schemes.' + s + 'Name')}</span>
-                <span class="scheme-desc">${i18n.t('schemes.' + s + 'Desc')}</span>
-            </div>
+    try {
+        cropsCache = await fetchApi('/crops');
+        tbody.innerHTML = cropsCache.map(c => `
+            <tr>
+                <td><strong>${escapeHtml(c.name)}</strong></td>
+                <td>${escapeHtml(c.type)}</td>
+                <td><small>${escapeHtml(c.soils ? c.soils.join(', ') : '')}</small></td>
+                <td>${escapeHtml(c.season)}</td>
+                <td>${escapeHtml(c.water)}</td>
+                <td>${c.yield} Qt</td>
+                <td>₹${c.marketPrice.toLocaleString('en-IN')}</td>
+                <td>₹${c.laborCost ? c.laborCost.toLocaleString('en-IN') : '6,000'}</td>
+            </tr>
         `).join('');
-
-        schemesPanel.innerHTML = `
-            <h4 style="font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:10px;">
-                <i class="fa-solid fa-hand-holding-hand text-info"></i> ${i18n.t('advisory.schemesTitle')}
-            </h4>
-            <div class="schemes-list">${schemesHTML}</div>
-        `;
-    }
+    } catch (e) {}
 }
 
-// Modal Handlers
-function showModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) modal.classList.remove('d-none');
+function openCropModal() {
+    document.getElementById('cropModal').classList.add('active');
 }
 
-function hideModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) modal.classList.add('d-none');
+function closeCropModal() {
+    document.getElementById('cropModal').classList.remove('active');
 }
 
-// Submit Register Farmer Form
-async function submitFarmer(event) {
-    event.preventDefault();
-    const id = document.getElementById('farmer-id').value;
-    const name = document.getElementById('farmer-name').value;
-    const acres = document.getElementById('farmer-acres').value;
-    const classChoice = document.getElementById('farmer-class').value;
-    const location = document.getElementById('farmer-location').value;
-    const lat = document.getElementById('farmer-lat').value;
-    const lon = document.getElementById('farmer-lon').value;
-    const soil = document.getElementById('farmer-soil').value;
-    const water = document.getElementById('farmer-water').value;
+async function handleSaveCropAdmin(e) {
+    e.preventDefault();
+    const name = document.getElementById('cropNameInput').value.trim();
+    const type = document.getElementById('cropTypeInput').value;
+    const season = document.getElementById('cropSeasonInput').value;
+    const water = document.getElementById('cropWaterInput').value;
+    const soils = document.getElementById('cropSoilsInput').value.trim();
+    const yieldVal = document.getElementById('cropYieldInput').value;
+    const price = document.getElementById('cropPriceInput').value;
+    const seed = document.getElementById('cropSeedCostInput').value;
+    const labor = document.getElementById('cropLaborCostInput').value;
+    const urea = document.getElementById('cropUreaInput').value;
+    const dap = document.getElementById('cropDapInput').value;
+    const mop = document.getElementById('cropMopInput').value;
 
     try {
-        const res = await fetch(`${API_BASE}/farmers`, {
+        await fetchApi('/crops', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, name, acres, classChoice, soil, water, location, latitude: lat, longitude: lon })
-        });
-
-        if (res.ok) {
-            alert(i18n.t('messages.farmerAdded'));
-            hideModal('register-farmer-modal');
-            document.getElementById('register-farmer-form').reset();
-            refreshAllData();
-        } else {
-            const err = await res.json();
-            alert(i18n.t('messages.errorOccurred') + (err.error || 'Failed'));
-        }
-    } catch (err) {
-        alert(i18n.t('messages.errorOccurred') + err.message);
-    }
-}
-
-// Submit Add Crop Form
-async function submitCrop(event) {
-    event.preventDefault();
-    const name = document.getElementById('crop-name').value;
-    const type = document.getElementById('crop-type').value;
-    const season = document.getElementById('crop-season').value;
-    const water = document.getElementById('crop-water').value;
-    const yieldVal = document.getElementById('crop-yield').value;
-    const marketPrice = document.getElementById('crop-price').value;
-    const seedCost = document.getElementById('crop-seed-cost').value;
-    const special = document.getElementById('crop-special').value;
-    const urea = document.getElementById('crop-urea').value;
-    const dap = document.getElementById('crop-dap').value;
-    const mop = document.getElementById('crop-mop').value;
-
-    const soilsChecked = Array.from(document.querySelectorAll('input[name="crop-soils"]:checked')).map(cb => cb.value);
-
-    if (soilsChecked.length === 0) {
-        alert("Please select at least one suitable soil profile.");
-        return;
-    }
-
-    try {
-        const res = await fetch(`${API_BASE}/crops`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name, type, season, water,
-                soils: soilsChecked.join(';'),
-                yield: yieldVal, special, urea, dap, mop,
-                marketPrice, seedCost
+                name, type, season, water, soils,
+                yield: yieldVal, marketPrice: price, seedCost: seed, laborCost: labor,
+                urea, dap, mop
             })
         });
 
-        if (res.ok) {
-            alert(i18n.t('messages.cropAdded'));
-            hideModal('add-crop-modal');
-            document.getElementById('add-crop-form').reset();
-            refreshAllData();
-        } else {
-            const err = await res.json();
-            alert(i18n.t('messages.errorOccurred') + (err.error || 'Failed'));
-        }
+        alert(i18n.t('messages.cropSaved'));
+        closeCropModal();
+        loadAdminCrops();
     } catch (err) {
-        alert(i18n.t('messages.errorOccurred') + err.message);
+        alert(err.message || 'Failed to save crop.');
     }
 }
 
-// View Farmer Advisory History Modal
-async function viewHistory(farmerId) {
+async function loadAdminFarmers() {
+    const tbody = document.getElementById('adminFarmersTableBody');
+    if (!tbody) return;
+
     try {
-        const res = await fetch(`${API_BASE}/farmers/${farmerId}/history`);
-        const records = await res.json();
-
-        const farmerName = farmersCache.find(f => f.id === farmerId)?.name || farmerId;
-        document.getElementById('history-farmer-name').textContent = farmerName;
-
-        const tbody = document.getElementById('history-table-body');
-        tbody.innerHTML = '';
-
-        if (records.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-muted text-center">${i18n.t('history.noHistory')}</td></tr>`;
-        } else {
-            records.forEach(r => {
-                const cName = i18n.lookup('cropNames', r.cropName);
-                tbody.innerHTML += `
-                    <tr>
-                        <td><strong>${cName}</strong></td>
-                        <td><span class="badge badge-success">${r.score}%</span></td>
-                        <td>${r.yield} ${i18n.t('advisory.tons')}</td>
-                        <td>${r.date}</td>
-                    </tr>
-                `;
-            });
-        }
-
-        showModal('view-history-modal');
-    } catch (err) {
-        console.error("Error fetching farmer history:", err);
-    }
+        farmersCache = await fetchApi('/farmers');
+        tbody.innerHTML = farmersCache.map(f => `
+            <tr>
+                <td><strong>${escapeHtml(f.id)}</strong></td>
+                <td>${escapeHtml(f.name)}</td>
+                <td>${escapeHtml(f.district || 'Thanjavur')}</td>
+                <td>${f.acres} Ac</td>
+                <td>${escapeHtml(f.soil)}</td>
+                <td>${escapeHtml(f.water)}</td>
+                <td><span class="badge ${f.acres <= 5 ? 'badge-success' : 'badge-info'}">${escapeHtml(f.type)}</span></td>
+                <td class="text-warning">${Math.round(f.subsidyRate * 100)}%</td>
+            </tr>
+        `).join('');
+    } catch (e) {}
 }
 
-function toggleSpecialInput(val) {
-    const label = document.getElementById('special-label');
-    if (label) {
-        label.textContent = val === 'CashCrop' ? 'Target Industry (e.g. Textile, Oil)' : 'Food Category (e.g. Cereal, Fruit)';
-    }
+// Utility Escaper
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
