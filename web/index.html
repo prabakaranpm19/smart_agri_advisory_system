@@ -454,148 +454,181 @@
                     </div>
                 </section>
 
-                <!-- SECTION 6: WINDY WEATHER STUDIO -->
+                <!-- SECTION 6: WINDY MOBILE WEATHER APP INTERFACE -->
                 <section id="section-weather" class="content-section">
-                    <div class="card windy-container-card">
-                        <div class="card-header windy-header">
-                            <div>
-                                <h2><i class="fa-solid fa-wind text-info"></i> <span data-i18n="weather.windyTitle">Tamil Nadu Windy Live Weather Studio</span></h2>
-                                <p data-i18n="weather.windySubtitle">Interactive particle wind vectors, Doppler rain radar, thermal spectrum, cloud layers, & 5-day agricultural forecast.</p>
-                            </div>
-                            <div class="map-district-select">
-                                <select id="mapDistrictSelector" class="form-control" onchange="onMapDistrictSelect(this.value)">
+                    <div class="windy-mobile-container">
+                        
+                        <!-- Top Floating Header Bar (Search & Location Target) -->
+                        <div class="windy-mobile-header">
+                            <div class="windy-search-pill">
+                                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                                <select id="mapDistrictSelector" class="windy-district-select" onchange="onMapDistrictSelect(this.value)">
                                     <!-- Injected by JS -->
                                 </select>
                             </div>
-                        </div>
-
-                        <!-- Windy Layer Control Floating Toolbar -->
-                        <div class="windy-toolbar">
-                            <div class="windy-layer-group">
-                                <button class="windy-layer-btn active" data-layer="wind" onclick="setWindyLayer('wind')">
-                                    <i class="fa-solid fa-wind"></i> <span data-i18n="weather.layerWind">Wind Stream</span>
-                                </button>
-                                <button class="windy-layer-btn" data-layer="rain" onclick="setWindyLayer('rain')">
-                                    <i class="fa-solid fa-cloud-showers-heavy"></i> <span data-i18n="weather.layerRain">Rain & Radar</span>
-                                </button>
-                                <button class="windy-layer-btn" data-layer="temp" onclick="setWindyLayer('temp')">
-                                    <i class="fa-solid fa-temperature-high"></i> <span data-i18n="weather.layerTemp">Temperature</span>
-                                </button>
-                                <button class="windy-layer-btn" data-layer="clouds" onclick="setWindyLayer('clouds')">
-                                    <i class="fa-solid fa-cloud"></i> <span data-i18n="weather.layerClouds">Humidity & Clouds</span>
-                                </button>
-                                <button class="windy-layer-btn" data-layer="satellite" onclick="setWindyLayer('satellite')">
-                                    <i class="fa-solid fa-satellite"></i> <span data-i18n="weather.layerSatellite">Satellite View</span>
-                                </button>
-                            </div>
-                            <button class="windy-layer-btn windy-anim-toggle" id="windyAnimToggleBtn" onclick="toggleWindyParticleAnim()">
-                                <i class="fa-solid fa-play"></i> <span>Particles: ON</span>
+                            <button class="btn-location-target" onclick="locateUserDistrict()" title="Find My Location">
+                                <i class="fa-solid fa-location-arrow"></i>
                             </button>
                         </div>
 
-                        <div class="map-highlight-banner" id="mapHighlightBanner">
-                            <i class="fa-solid fa-star text-warning"></i> <span id="mapHighlightText">Your home district is highlighted on the map!</span>
-                        </div>
-
-                        <div class="weather-map-layout">
-                            <div class="leaflet-map-wrapper">
-                                <div id="leafletMap" class="leaflet-map-container"></div>
-                                <canvas id="windyCanvas" class="windy-canvas-overlay"></canvas>
-                                
-                                <!-- Windy Floating Wind Speed Scale Legend -->
-                                <div class="windy-legend-pill" id="windyLegendPill">
-                                    <span class="legend-title">Wind Vector (km/h)</span>
-                                    <div class="legend-bar">
-                                        <span class="l-step" style="background:#10b981;">0</span>
-                                        <span class="l-step" style="background:#06b6d4;">12</span>
-                                        <span class="l-step" style="background:#f59e0b;">25</span>
-                                        <span class="l-step" style="background:#ef4444;">40+</span>
-                                    </div>
-                                </div>
-
-                                <!-- Windy Interactive Timeline Slider -->
-                                <div class="windy-timeline-bar">
-                                    <button class="windy-play-btn" id="windyTimelinePlayBtn" onclick="toggleWindyTimelinePlay()">
-                                        <i class="fa-solid fa-play"></i>
-                                    </button>
-                                    <div class="windy-timeline-track">
-                                        <input type="range" min="0" max="4" value="0" step="1" id="windyTimelineScrubber" oninput="onWindyTimelineScrub(this.value)">
-                                        <div class="timeline-labels">
-                                            <span class="t-step active" onclick="onWindyTimelineScrub(0)">Live</span>
-                                            <span class="t-step" onclick="onWindyTimelineScrub(1)">Tomorrow</span>
-                                            <span class="t-step" onclick="onWindyTimelineScrub(2)">Day 3</span>
-                                            <span class="t-step" onclick="onWindyTimelineScrub(3)">Day 4</span>
-                                            <span class="t-step" onclick="onWindyTimelineScrub(4)">Day 5</span>
-                                        </div>
-                                    </div>
-                                    <span class="windy-time-badge" id="windyTimeBadge">Live Telemetry</span>
-                                </div>
+                        <!-- Top Floating Live Weather & 3-Day Card Widget (Left Screenshot) -->
+                        <div class="windy-top-weather-card card glass-card">
+                            <div class="w-card-left">
+                                <span class="w-main-temp" id="windyTopTemp">31°</span>
+                                <span class="w-main-wind" id="windyTopWind">↙ 14 kt</span>
                             </div>
-
-                            <!-- Windy Sidepanel / Telemetry Inspector -->
-                            <div class="weather-info-sidepanel card glass-card" id="mapWeatherSidePanel">
-                                <div class="panel-header-badge">
-                                    <i class="fa-solid fa-location-dot text-danger"></i>
-                                    <h3 id="panelDistrictTitle">Thanjavur District</h3>
-                                </div>
-
-                                <div class="windy-temp-hero">
-                                    <div class="temp-big">
-                                        <span id="panelTemp">-- °C</span>
-                                        <span class="weather-cond-pill" id="panelWeatherCond"><i class="fa-solid fa-sun text-warning"></i> Fair Sky</span>
+                            <div class="w-card-right">
+                                <div class="w-3day-grid">
+                                    <div class="w-day-col">
+                                        <span class="w-day-lbl">MON</span>
+                                        <i class="fa-solid fa-cloud-sun text-warning"></i>
+                                        <strong id="wDay1Temp">31°</strong>
                                     </div>
-                                    <div class="wind-compass-wrapper" title="Wind Direction Vector">
-                                        <i class="fa-solid fa-location-arrow wind-compass-arrow" id="windCompassArrow"></i>
-                                        <span class="compass-label" id="windCompassLabel">ENE 14.5 km/h</span>
-                                    </div>
-                                </div>
-
-                                <div class="windy-telemetry-grid">
-                                    <div class="w-tele-card">
-                                        <i class="fa-solid fa-droplet text-info"></i>
-                                        <div>
-                                            <span class="wt-val" id="panelHumidity">-- %</span>
-                                            <span class="wt-lbl">Humidity</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-tele-card">
-                                        <i class="fa-solid fa-cloud-showers-heavy text-primary"></i>
-                                        <div>
-                                            <span class="wt-val" id="panelRain">-- %</span>
-                                            <span class="wt-lbl">Rain Prob</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-tele-card">
-                                        <i class="fa-solid fa-gauge-high text-warning"></i>
-                                        <div>
-                                            <span class="wt-val" id="panelPressure">1012 hPa</span>
-                                            <span class="wt-lbl">Pressure</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-tele-card">
+                                    <div class="w-day-col">
+                                        <span class="w-day-lbl">TUE</span>
                                         <i class="fa-solid fa-sun text-warning"></i>
-                                        <div>
-                                            <span class="wt-val" id="panelUv">6 (Mod)</span>
-                                            <span class="wt-lbl">UV Index</span>
-                                        </div>
+                                        <strong id="wDay2Temp">33°</strong>
+                                    </div>
+                                    <div class="w-day-col">
+                                        <span class="w-day-lbl">WED</span>
+                                        <i class="fa-solid fa-cloud-showers-heavy text-info"></i>
+                                        <strong id="wDay3Temp">30°</strong>
                                     </div>
                                 </div>
+                                <div class="rainbow-gradient-bar"></div>
+                            </div>
+                        </div>
 
-                                <!-- Agricultural Spraying Advice Box -->
-                                <div class="agri-spray-advisory mt-3" id="agriSprayAdvisory">
-                                    <i class="fa-solid fa-spray-can-sparkles text-success"></i>
-                                    <div>
-                                        <strong>Agri Spraying Status:</strong>
-                                        <p id="agriSprayText">Low wind speed (&lt; 15 km/h) &amp; dry weather. Excellent condition for foliar fertilizer or crop protection spraying.</p>
+                        <!-- Main Map Studio Frame -->
+                        <div class="windy-map-frame">
+                            <div id="leafletMap" class="leaflet-map-container"></div>
+                            <!-- Canvas Layer 1: Vivid Gradient Heatmap -->
+                            <canvas id="windyHeatmapCanvas" class="windy-heatmap-overlay"></canvas>
+                            <!-- Canvas Layer 2: Animated White Particle Wind Vectors -->
+                            <canvas id="windyCanvas" class="windy-canvas-overlay"></canvas>
+
+                            <!-- Floating Badges -->
+                            <div class="windy-badge-topright" id="windyLayerBadge">Wind ↗</div>
+                            <div class="windy-badge-botleft">Surface</div>
+
+                            <!-- Central Floating Timestamp Box (Center Screenshot) -->
+                            <div class="windy-time-box" id="windyTimeBox">12:00</div>
+
+                            <!-- Bottom Scrubber & Timeline Bar (Center Screenshot) -->
+                            <div class="windy-bottom-scrubber-bar">
+                                <button class="windy-play-circle" id="windyPlayBtn" onclick="toggleWindyTimelinePlay()">
+                                    <i class="fa-solid fa-play"></i>
+                                </button>
+                                <div class="windy-timeline-flex">
+                                    <input type="range" min="0" max="4" value="0" step="1" id="windyTimelineScrubber" oninput="onWindyTimelineScrub(this.value)">
+                                    <div class="windy-days-row">
+                                        <span class="w-day-pill active" onclick="onWindyTimelineScrub(0)">Monday 11</span>
+                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(1)">Tuesday 12</span>
+                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(2)">Wednesday 13</span>
+                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(3)">Thursday 14</span>
+                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(4)">Friday 15</span>
                                     </div>
                                 </div>
+                            </div>
 
-                                <h4 class="mt-3" data-i18n="weather.forecastTitle">5-Day Agricultural Forecast</h4>
-                                <div class="forecast-list" id="forecastList">
-                                    <!-- Injected by JS -->
+                            <!-- Bottom Signature Color Scale Unit Bar (kt 0 5 10 20 30 40 60) -->
+                            <div class="windy-kt-scale-bar">
+                                <span class="kt-title">kt</span>
+                                <span class="kt-step" style="background:#0284c7; color:#fff;">0</span>
+                                <span class="kt-step" style="background:#10b981; color:#fff;">5</span>
+                                <span class="kt-step" style="background:#84cc16; color:#000;">10</span>
+                                <span class="kt-step" style="background:#f59e0b; color:#000;">20</span>
+                                <span class="kt-step" style="background:#ef4444; color:#fff;">30</span>
+                                <span class="kt-step" style="background:#a855f7; color:#fff;">40</span>
+                                <span class="kt-step" style="background:#d946ef; color:#fff;">60</span>
+                            </div>
+                        </div>
+
+                        <!-- Right Slide-out Red Menu Drawer (Right Screenshot) -->
+                        <div class="windy-menu-drawer" id="windyMenuDrawer">
+                            <div class="drawer-header-red">
+                                <button class="btn-drawer-back" onclick="toggleWindyMenuDrawer()">
+                                    <i class="fa-solid fa-arrow-left"></i>
+                                </button>
+                                <h2>Menu</h2>
+                            </div>
+                            <div class="drawer-body">
+                                <ul class="drawer-nav-list">
+                                    <li onclick="openAuthModal('login')">
+                                        <i class="fa-solid fa-right-to-bracket"></i> <span>Login / Register</span>
+                                    </li>
+                                    <li onclick="showSection('profile')">
+                                        <i class="fa-solid fa-gear"></i> <span>Settings</span>
+                                    </li>
+                                    <li onclick="locateUserDistrict()">
+                                        <i class="fa-solid fa-location-crosshairs"></i> <span>Find my location</span>
+                                    </li>
+                                </ul>
+
+                                <div class="drawer-section-title">Display on map</div>
+                                <div class="display-map-grid">
+                                    <button class="d-icon-btn active" data-layer="wind" onclick="setWindyLayer('wind')" title="Wind">
+                                        <i class="fa-solid fa-wind"></i>
+                                    </button>
+                                    <button class="d-icon-btn" data-layer="temp" onclick="setWindyLayer('temp')" title="Temperature">
+                                        <i class="fa-solid fa-temperature-high"></i>
+                                    </button>
+                                    <button class="d-icon-btn" data-layer="rain" onclick="setWindyLayer('rain')" title="Rain & Radar">
+                                        <i class="fa-solid fa-cloud-showers-heavy"></i>
+                                    </button>
+                                    <button class="d-icon-btn" data-layer="clouds" onclick="setWindyLayer('clouds')" title="Clouds">
+                                        <i class="fa-solid fa-cloud"></i>
+                                    </button>
+                                    <button class="d-icon-btn" data-layer="satellite" onclick="setWindyLayer('satellite')" title="Satellite">
+                                        <i class="fa-solid fa-satellite"></i>
+                                    </button>
+                                </div>
+
+                                <div class="drawer-section-title">Forecast model</div>
+                                <div class="forecast-model-selector">
+                                    <button class="model-pill" onclick="setModel('NAM')">NAM 3km</button>
+                                    <button class="model-pill active" onclick="setModel('ECMWF')">ECMWF 9km</button>
+                                    <button class="model-pill" onclick="setModel('GFS')">GFS 22km</button>
+                                </div>
+
+                                <div class="drawer-section-title">Click to change units</div>
+                                <div class="windy-kt-scale-bar menu-scale">
+                                    <span class="kt-title">kt</span>
+                                    <span class="kt-step" style="background:#0284c7; color:#fff;">0</span>
+                                    <span class="kt-step" style="background:#10b981; color:#fff;">5</span>
+                                    <span class="kt-step" style="background:#84cc16; color:#000;">10</span>
+                                    <span class="kt-step" style="background:#f59e0b; color:#000;">20</span>
+                                    <span class="kt-step" style="background:#ef4444; color:#fff;">30</span>
+                                    <span class="kt-step" style="background:#a855f7; color:#fff;">40</span>
+                                    <span class="kt-step" style="background:#d946ef; color:#fff;">60</span>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Bottom Mobile Navigation Bar (Matching Screenshot) -->
+                        <div class="windy-mobile-bottom-nav">
+                            <div class="m-nav-tab" onclick="showSection('landing')">
+                                <i class="fa-solid fa-house"></i>
+                                <span>Home</span>
+                            </div>
+                            <div class="m-nav-tab active" onclick="showSection('weather')">
+                                <i class="fa-solid fa-globe"></i>
+                                <span>Map</span>
+                            </div>
+                            <div class="m-nav-tab" onclick="showSection('advisory')">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <span>Search</span>
+                            </div>
+                            <div class="m-nav-tab" onclick="showSection('history')">
+                                <i class="fa-solid fa-star"></i>
+                                <span>Favorites</span>
+                            </div>
+                            <div class="m-nav-tab" onclick="toggleWindyMenuDrawer()">
+                                <i class="fa-solid fa-ellipsis"></i>
+                                <span>Menu</span>
+                            </div>
+                        </div>
+
                     </div>
                 </section>
 
