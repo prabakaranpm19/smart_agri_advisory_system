@@ -168,6 +168,9 @@ Navigate in your browser to:
 | `GET` | `/api/advisories` | Protected | Advisory history for logged-in farmer |
 | `GET` | `/api/advisories/{id}` | Protected | Fetch single advisory report detail |
 | `GET` | `/api/weather` | Public | Fetch Open-Meteo telemetry for location/district |
+| `GET` | `/api/weather/grid` | Public | Multi-location batched 72h grid weather API (`south,west,north,east,rows,cols,hour`) |
+| `GET` | `/api/weather/point` | Public | Point telemetry API (current, 24h hourly, 5-day daily forecast for any lat/lon) |
+| `GET` | `/api/geocode` | Public | Geocoding search proxy to Open-Meteo Geocoding API |
 | `GET` | `/api/alerts` | Public | Fetch risk telemetry and weather alerts |
 | `POST` | `/api/water/simulate` | Protected | Run 5-thread canal water concurrency test |
 | `GET` | `/api/crops` | Protected | Retrieve crop catalog |
@@ -220,6 +223,30 @@ Protected endpoints return HTTP status `401 Unauthorized` (`{"error":"..."}`) if
 
 ---
 
+## 🌊 Interactive Windy-Style Weather Map & Grid System
+
+### Architecture & Endpoints
+1. **`/api/weather/grid?south=&west=&north=&east=&rows=&cols=&hour=`**:
+   - Constructs a 2D lattice of grid points spanning the current viewport bounds.
+   - Sends batched multi-location HTTP requests to Open-Meteo (`latitude=lat1,lat2...&longitude=lon1,lon2...`) in chunks of <= 80 locations per batch to respect API limits.
+   - Calculates zonal ($u = -\text{speed} \times \sin(\text{direction})$) and meridional ($v = -\text{speed} \times \cos(\text{direction})$) wind components for vector field calculation.
+   - Caches response in a 15-minute TTL `ConcurrentHashMap` (`GridCacheEntry`) keyed by rounded bounds (0.05° precision).
+   - Serves an offline/fallback mathematical grid model if external Open-Meteo network calls fail.
+
+2. **`/api/weather/point?lat=&lon=`**:
+   - Fetches current weather telemetry, 24-hour hourly forecast, and 5-day daily forecast for any global geographical coordinate clicked on the map.
+
+3. **`/api/geocode?q=`**:
+   - Proxies Open-Meteo Geocoding API to search any village, city, or district worldwide.
+
+### Grid Construction & Bilinear Interpolation
+- The frontend samples values across continuous lat/lon space by executing **Bilinear Interpolation** across the 4 surrounding grid nodes $(i, j), (i+1, j), (i, j+1), (i+1, j+1)$:
+  $$\text{Value}(u, v) = (1-u)(1-v)Q_{00} + u(1-v)Q_{10} + (1-u)v Q_{01} + uv Q_{11}$$
+- **Heatmap Overlay Canvas**: Renders continuous color-gradient fields (Temperature, Wind, Rain, Clouds, Pressure, Humidity) using dynamic screen-space pixel interpolation.
+- **Wind Particle Engine**: Canvas overlay animating ~4,000 streamline particles. Particles move according to interpolated $(u, v)$ velocity vectors, fade using translucent trails, and re-seed upon map pan/zoom.
+
+---
+
 ## 🧪 Comprehensive Testing Checklist
 
 - [x] **Sign Up**: Register a new user account with 4-digit PIN. Verify salt & SHA-256 hash in DB.
@@ -227,6 +254,13 @@ Protected endpoints return HTTP status `401 Unauthorized` (`{"error":"..."}`) if
 - [x] **First-Time Farm Setup**: Complete district selection (Thanjavur), soil (Alluvial), size (3.5 acres). Verify auto-classification as `SmallFarmer` (30% NPK Subsidy).
 - [x] **Get Advisory**: Generate Kuruvai season advisory. Confirm Paddy ranks #1, scaled NPK is calculated, 30% subsidy discount is applied, and weather advice notes are generated.
 - [x] **Advisory History**: Verify report is saved to history. Reopen full report card modal.
-- [x] **Weather Failure Fallback**: Verify Open-Meteo failure fallback triggers simulated telemetry without server crash.
+- [x] **Weather Map - Wind Particles**: Animated wind particles move along wind vectors, adapt smoothly to pan/zoom, and re-seed upon map boundary shifts.
+- [x] **Weather Map - Layer Switcher**: Dynamic layer toggling (Wind, Temp, Rain, Clouds, Pressure, Humidity) updates heatmap canvas colors and legend bar dynamically.
+- [x] **Weather Map - Time Slider**: Scrubbing 72-hour timeline player updates grid forecast values across the entire map frame.
+- [x] **Weather Map - Click Anywhere Popup**: Clicking any coordinate globally drops a pin and opens a side drawer with current telemetry, 24-hour hourly chart, and 5-day mini forecast.
+- [x] **Weather Map - Search & Geolocation**: Open-Meteo geocoding search flies to searched locations; "My Location" button uses browser HTML5 Geolocation API.
+- [x] **Weather Map - Farm Marker & Advisory**: Displays "My Farm" marker at logged-in farmer's saved coordinates with instant popup advisory notes button.
+- [x] **Weather Map - API Offline Resilience**: Displays a non-blocking toast warning ("Weather data unavailable, showing cached telemetry") and falls back to cached/generated grid data without crashing.
+- [x] **Weather Map - Mobile Responsiveness**: Touch pan/zoom enabled, glass panels and drawer layout adapt gracefully to smaller viewports.
 - [x] **401 Handling**: Verify protected API routes return `401 Unauthorized` without a valid `Authorization` token.
 - [x] **Water Allocation Concurrency**: Run 5-thread canal sluice gate simulation. Verify exactly 3 threads are granted (45 KL) and 2 denied from 50 KL reservoir.

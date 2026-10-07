@@ -129,14 +129,27 @@
     "viewReport": "View Full Report"
   },
   "weather": {
-    "title": "Tamil Nadu Live Weather Telemetry (Open-Meteo)",
-    "subtitle": "Displays district-wise temperature, humidity, rain probability, and wind speed using Open-Meteo integration.",
-    "highlightedNote": "🌟 Your home district ({district}) is highlighted on the map!",
+    "title": "Interactive Weather Studio",
+    "subtitle": "Global weather layer map with animated wind streamlines, heatmaps, 72-hour forecast timeline, and point-and-click telemetry.",
+    "highlightedNote": "🌟 Your home farm location ({district}) is marked on the map!",
     "temp": "Current Temp",
     "humidity": "Humidity",
     "rainProb": "Max Rain Prob",
     "wind": "Wind Speed",
-    "forecastTitle": "5-Day Agricultural Forecast"
+    "forecastTitle": "5-Day Agricultural Forecast",
+    "myLocation": "My Location",
+    "farmAdvice": "Farm Advice",
+    "layersTitle": "Layers",
+    "layerWind": "Wind",
+    "layerTemp": "Temp",
+    "layerRain": "Rain",
+    "layerClouds": "Clouds",
+    "layerPressure": "Pressure",
+    "layerHumidity": "Humidity",
+    "windVectors": "Wind Vectors",
+    "hourlyTitle": "24-Hour Hourly Forecast",
+    "dailyTitle": "5-Day Forecast",
+    "farmAdviceModalTitle": "Weather Advisory for My Farm"
   },
   "water": {
     "title": "Shared Reservoir Canal Water Allocation",

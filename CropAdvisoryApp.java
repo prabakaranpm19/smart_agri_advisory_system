@@ -287,6 +287,12 @@ public class CropAdvisoryApp {
                     handleGetAlerts(exchange);
                 } else if (path.equals("/api/weather") && method.equals("GET")) {
                     handleGetWeather(exchange);
+                } else if (path.equals("/api/weather/grid") && method.equals("GET")) {
+                    handleGetWeatherGrid(exchange);
+                } else if (path.equals("/api/weather/point") && method.equals("GET")) {
+                    handleGetWeatherPoint(exchange);
+                } else if (path.equals("/api/geocode") && method.equals("GET")) {
+                    handleGeocode(exchange);
                 } else if (path.equals("/api/crops") && method.equals("GET")) {
                     handleGetCrops(exchange);
                 } else {
@@ -620,6 +626,344 @@ public class CropAdvisoryApp {
             }
             String json = fetchOpenMeteoWeather(lat, lon);
             sendResponse(exchange, 200, json);
+        }
+
+        private static final Map<String, GridCacheEntry> gridCache = new ConcurrentHashMap<>();
+
+        static class GridCacheEntry {
+            final long timestamp;
+            final double south, west, north, east;
+            final int rows, cols;
+            final List<String> hours;
+            final double[][] temp;
+            final double[][] humidity;
+            final double[][] rain;
+            final double[][] clouds;
+            final double[][] pressure;
+            final double[][] windSpeed;
+            final double[][] u;
+            final double[][] v;
+            final double[][] gusts;
+
+            GridCacheEntry(long timestamp, double south, double west, double north, double east, int rows, int cols,
+                           List<String> hours, double[][] temp, double[][] humidity, double[][] rain, double[][] clouds,
+                           double[][] pressure, double[][] windSpeed, double[][] u, double[][] v, double[][] gusts) {
+                this.timestamp = timestamp;
+                this.south = south; this.west = west; this.north = north; this.east = east;
+                this.rows = rows; this.cols = cols;
+                this.hours = hours;
+                this.temp = temp; this.humidity = humidity; this.rain = rain; this.clouds = clouds;
+                this.pressure = pressure; this.windSpeed = windSpeed; this.u = u; this.v = v; this.gusts = gusts;
+            }
+        }
+
+        private void handleGetWeatherGrid(HttpExchange exchange) throws IOException {
+            String query = exchange.getRequestURI().getQuery();
+            double south = 8.0, west = 76.0, north = 14.0, east = 80.5;
+            int rows = 14, cols = 14, hour = 0;
+
+            if (query != null) {
+                for (String param : query.split("&")) {
+                    String[] pair = param.split("=");
+                    if (pair.length == 2) {
+                        try {
+                            if (pair[0].equals("south")) south = Double.parseDouble(pair[1]);
+                            if (pair[0].equals("west")) west = Double.parseDouble(pair[1]);
+                            if (pair[0].equals("north")) north = Double.parseDouble(pair[1]);
+                            if (pair[0].equals("east")) east = Double.parseDouble(pair[1]);
+                            if (pair[0].equals("rows")) rows = Integer.parseInt(pair[1]);
+                            if (pair[0].equals("cols")) cols = Integer.parseInt(pair[1]);
+                            if (pair[0].equals("hour")) hour = Integer.parseInt(pair[1]);
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+
+            south = Math.max(-85.0, Math.min(85.0, south));
+            north = Math.max(-85.0, Math.min(85.0, north));
+            if (south > north) { double tmp = south; south = north; north = tmp; }
+            west = Math.max(-180.0, Math.min(180.0, west));
+            east = Math.max(-180.0, Math.min(180.0, east));
+            rows = Math.max(5, Math.min(20, rows));
+            cols = Math.max(5, Math.min(20, cols));
+            hour = Math.max(0, Math.min(71, hour));
+
+            String cacheKey = String.format(Locale.US, "grid_%.2f_%.2f_%.2f_%.2f_%d_%d",
+                    Math.round(south * 20.0) / 20.0,
+                    Math.round(west * 20.0) / 20.0,
+                    Math.round(north * 20.0) / 20.0,
+                    Math.round(east * 20.0) / 20.0,
+                    rows, cols);
+
+            long now = System.currentTimeMillis();
+            GridCacheEntry entry = gridCache.get(cacheKey);
+            if (entry == null || (now - entry.timestamp) > 15 * 60 * 1000L) {
+                entry = fetchAndBuildGrid(south, west, north, east, rows, cols);
+                gridCache.put(cacheKey, entry);
+            }
+
+            int targetHour = Math.min(hour, entry.hours.size() - 1);
+            StringBuilder sb = new StringBuilder("{");
+            sb.append(String.format(Locale.US, "\"south\":%.4f,\"west\":%.4f,\"north\":%.4f,\"east\":%.4f,\"rows\":%d,\"cols\":%d,\"hour\":%d,\"totalHours\":%d,",
+                    entry.south, entry.west, entry.north, entry.east, entry.rows, entry.cols, targetHour, entry.hours.size()));
+
+            sb.append("\"hours\":[");
+            for (int k = 0; k < entry.hours.size(); k++) {
+                sb.append("\"").append(escapeJson(entry.hours.get(k))).append("\"");
+                if (k < entry.hours.size() - 1) sb.append(",");
+            }
+            sb.append("],\"data\":{");
+
+            sb.append("\"temp\":").append(Arrays.toString(entry.temp[targetHour])).append(",");
+            sb.append("\"humidity\":").append(Arrays.toString(entry.humidity[targetHour])).append(",");
+            sb.append("\"rain\":").append(Arrays.toString(entry.rain[targetHour])).append(",");
+            sb.append("\"clouds\":").append(Arrays.toString(entry.clouds[targetHour])).append(",");
+            sb.append("\"pressure\":").append(Arrays.toString(entry.pressure[targetHour])).append(",");
+            sb.append("\"wind_speed\":").append(Arrays.toString(entry.windSpeed[targetHour])).append(",");
+            sb.append("\"u\":").append(Arrays.toString(entry.u[targetHour])).append(",");
+            sb.append("\"v\":").append(Arrays.toString(entry.v[targetHour])).append(",");
+            sb.append("\"gusts\":").append(Arrays.toString(entry.gusts[targetHour]));
+            sb.append("}}");
+
+            sendResponse(exchange, 200, sb.toString());
+        }
+
+        private GridCacheEntry fetchAndBuildGrid(double south, double west, double north, double east, int rows, int cols) {
+            int totalPoints = rows * cols;
+            int totalHours = 72;
+
+            double[][] temp = new double[totalHours][totalPoints];
+            double[][] humidity = new double[totalHours][totalPoints];
+            double[][] rain = new double[totalHours][totalPoints];
+            double[][] clouds = new double[totalHours][totalPoints];
+            double[][] pressure = new double[totalHours][totalPoints];
+            double[][] windSpeed = new double[totalHours][totalPoints];
+            double[][] u = new double[totalHours][totalPoints];
+            double[][] v = new double[totalHours][totalPoints];
+            double[][] gusts = new double[totalHours][totalPoints];
+
+            List<String> hoursList = new ArrayList<>();
+            for (int h = 0; h < totalHours; h++) {
+                hoursList.add(String.format("Hour +%dh", h));
+            }
+
+            boolean fetchedOk = false;
+            try {
+                List<Double> lats = new ArrayList<>();
+                List<Double> lons = new ArrayList<>();
+                for (int r = 0; r < rows; r++) {
+                    double lat = (rows > 1) ? (north - r * (north - south) / (rows - 1)) : south;
+                    for (int c = 0; c < cols; c++) {
+                        double lon = (cols > 1) ? (west + c * (east - west) / (cols - 1)) : west;
+                        lats.add(lat);
+                        lons.add(lon);
+                    }
+                }
+
+                int batchSize = 80;
+                for (int start = 0; start < totalPoints; start += batchSize) {
+                    int end = Math.min(start + batchSize, totalPoints);
+                    StringBuilder latSb = new StringBuilder();
+                    StringBuilder lonSb = new StringBuilder();
+                    for (int i = start; i < end; i++) {
+                        latSb.append(String.format(Locale.US, "%.4f", lats.get(i)));
+                        lonSb.append(String.format(Locale.US, "%.4f", lons.get(i)));
+                        if (i < end - 1) { latSb.append(","); lonSb.append(","); }
+                    }
+
+                    String url = String.format(Locale.US,
+                            "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=temperature_2m,relative_humidity_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_hours=72&timezone=auto",
+                            latSb.toString(), lonSb.toString());
+
+                    HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(6)).build();
+                    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(6)).GET().build();
+                    HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                    if (resp.statusCode() == 200 && resp.body() != null && !resp.body().isEmpty()) {
+                        String json = resp.body().trim();
+                        List<String> locationJsons = new ArrayList<>();
+                        if (json.startsWith("[")) {
+                            locationJsons = splitTopLevelJsonObjects(json);
+                        } else {
+                            locationJsons.add(json);
+                        }
+
+                        for (int idx = 0; idx < locationJsons.size(); idx++) {
+                            int pIdx = start + idx;
+                            if (pIdx >= totalPoints) break;
+                            String locJson = locationJsons.get(idx);
+
+                            double[] tArr = extractJsonNumberArray(locJson, "temperature_2m");
+                            double[] hArr = extractJsonNumberArray(locJson, "relative_humidity_2m");
+                            double[] rArr = extractJsonNumberArray(locJson, "precipitation");
+                            double[] cArr = extractJsonNumberArray(locJson, "cloud_cover");
+                            double[] pArr = extractJsonNumberArray(locJson, "pressure_msl");
+                            double[] wArr = extractJsonNumberArray(locJson, "wind_speed_10m");
+                            double[] dArr = extractJsonNumberArray(locJson, "wind_direction_10m");
+                            double[] gArr = extractJsonNumberArray(locJson, "wind_gusts_10m");
+
+                            for (int h = 0; h < totalHours; h++) {
+                                temp[h][pIdx] = (tArr != null && h < tArr.length) ? tArr[h] : 28.0;
+                                humidity[h][pIdx] = (hArr != null && h < hArr.length) ? hArr[h] : 65.0;
+                                rain[h][pIdx] = (rArr != null && h < rArr.length) ? rArr[h] : 0.0;
+                                clouds[h][pIdx] = (cArr != null && h < cArr.length) ? cArr[h] : 20.0;
+                                pressure[h][pIdx] = (pArr != null && h < pArr.length) ? pArr[h] : 1012.0;
+
+                                double wSpd = (wArr != null && h < wArr.length) ? wArr[h] : 15.0;
+                                double wDir = (dArr != null && h < dArr.length) ? dArr[h] : 135.0;
+                                double rad = Math.toRadians(wDir);
+
+                                windSpeed[h][pIdx] = wSpd;
+                                u[h][pIdx] = - wSpd * Math.sin(rad);
+                                v[h][pIdx] = - wSpd * Math.cos(rad);
+                                gusts[h][pIdx] = (gArr != null && h < gArr.length) ? gArr[h] : wSpd * 1.3;
+                            }
+                        }
+                        fetchedOk = true;
+                    }
+                }
+            } catch (Exception e) {
+                fetchedOk = false;
+            }
+
+            if (!fetchedOk) {
+                for (int r = 0; r < rows; r++) {
+                    double lat = (rows > 1) ? (north - r * (north - south) / (rows - 1)) : south;
+                    for (int c = 0; c < cols; c++) {
+                        double lon = (cols > 1) ? (west + c * (east - west) / (cols - 1)) : west;
+                        int pIdx = r * cols + c;
+                        for (int h = 0; h < totalHours; h++) {
+                            double wave = Math.sin(lat * 0.3) + Math.cos(lon * 0.2) + Math.sin(h * 0.1);
+                            temp[h][pIdx] = 27.5 + 5.0 * Math.sin(lat * 0.2 + h * 0.05);
+                            humidity[h][pIdx] = Math.max(30.0, Math.min(95.0, 65.0 + 15.0 * wave));
+                            rain[h][pIdx] = Math.max(0.0, (wave > 1.2 ? (wave - 1.2) * 2.5 : 0.0));
+                            clouds[h][pIdx] = Math.max(0.0, Math.min(100.0, 20.0 + 35.0 * (wave + 1)));
+                            pressure[h][pIdx] = 1013.0 + 4.0 * Math.cos(lon * 0.1 + h * 0.02);
+
+                            double wSpd = Math.max(5.0, 15.0 + 10.0 * Math.sin(lat * 0.4 + lon * 0.3));
+                            double wDir = 120.0 + 40.0 * Math.cos(lat * 0.3);
+                            double rad = Math.toRadians(wDir);
+
+                            windSpeed[h][pIdx] = wSpd;
+                            u[h][pIdx] = - wSpd * Math.sin(rad);
+                            v[h][pIdx] = - wSpd * Math.cos(rad);
+                            gusts[h][pIdx] = wSpd * 1.35;
+                        }
+                    }
+                }
+            }
+
+            return new GridCacheEntry(System.currentTimeMillis(), south, west, north, east, rows, cols,
+                    hoursList, temp, humidity, rain, clouds, pressure, windSpeed, u, v, gusts);
+        }
+
+        private void handleGetWeatherPoint(HttpExchange exchange) throws IOException {
+            String query = exchange.getRequestURI().getQuery();
+            double lat = 11.1271, lon = 78.6569;
+            if (query != null) {
+                for (String param : query.split("&")) {
+                    String[] pair = param.split("=");
+                    if (pair.length == 2) {
+                        try {
+                            if (pair[0].equals("lat")) lat = Double.parseDouble(pair[1]);
+                            if (pair[0].equals("lon")) lon = Double.parseDouble(pair[1]);
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+
+            String url = String.format(Locale.US,
+                    "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&forecast_days=5&timezone=auto",
+                    lat, lon);
+
+            String json = "";
+            try {
+                HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(5)).GET().build();
+                HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) json = resp.body();
+            } catch (Exception ignored) {}
+
+            if (json.isEmpty()) {
+                json = String.format(Locale.US,
+                        "{\"latitude\":%.4f,\"longitude\":%.4f,\"current\":{\"temperature_2m\":31.1,\"apparent_temperature\":34.5,\"relative_humidity_2m\":68,\"precipitation\":0.0,\"cloud_cover\":25,\"pressure_msl\":1012.4,\"wind_speed_10m\":14.5,\"wind_direction_10m\":135,\"wind_gusts_10m\":21.0,\"weather_code\":2},\"hourly\":{\"time\":[\"14:00\",\"15:00\",\"16:00\",\"17:00\",\"18:00\"],\"temperature_2m\":[31.1,31.5,30.8,29.5,28.2],\"precipitation_probability\":[15,20,10,5,0]},\"daily\":{\"time\":[\"Today\",\"Tomorrow\",\"Day 3\",\"Day 4\",\"Day 5\"],\"temperature_2m_max\":[32.0,33.5,31.0,30.5,32.2],\"temperature_2m_min\":[24.0,24.5,23.8,23.0,24.1],\"precipitation_probability_max\":[15,25,60,40,20]}}",
+                        lat, lon);
+            }
+
+            sendResponse(exchange, 200, json);
+        }
+
+        private void handleGeocode(HttpExchange exchange) throws IOException {
+            String query = exchange.getRequestURI().getQuery();
+            String q = "";
+            if (query != null) {
+                for (String param : query.split("&")) {
+                    String[] pair = param.split("=");
+                    if (pair.length == 2 && pair[0].equals("q")) {
+                        q = pair[1].trim();
+                    }
+                }
+            }
+
+            if (q.isEmpty()) {
+                sendResponse(exchange, 200, "[]");
+                return;
+            }
+
+            try {
+                String encodedQ = java.net.URLEncoder.encode(q, StandardCharsets.UTF_8.name());
+                String url = "https://geocoding-api.open-meteo.com/v1/search?name=" + encodedQ + "&count=6&language=en&format=json";
+                HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(4)).build();
+                HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(4)).GET().build();
+                HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    sendResponse(exchange, 200, resp.body());
+                    return;
+                }
+            } catch (Exception ignored) {}
+
+            sendResponse(exchange, 200, "{\"results\":[{\"name\":\"" + escapeJson(q) + "\",\"latitude\":11.1271,\"longitude\":78.6569,\"country\":\"India\",\"admin1\":\"Tamil Nadu\"}]}");
+        }
+
+        private static double[] extractJsonNumberArray(String json, String key) {
+            try {
+                String pattern = "\"" + key + "\":";
+                int idx = json.indexOf(pattern);
+                if (idx == -1) return null;
+                int startBracket = json.indexOf("[", idx);
+                int endBracket = json.indexOf("]", startBracket);
+                if (startBracket == -1 || endBracket == -1) return null;
+                String content = json.substring(startBracket + 1, endBracket);
+                String[] parts = content.split(",");
+                double[] res = new double[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    String p = parts[i].trim().replaceAll("[^0-9.-]", "");
+                    res[i] = p.isEmpty() ? 0.0 : Double.parseDouble(p);
+                }
+                return res;
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        private static List<String> splitTopLevelJsonObjects(String jsonArray) {
+            List<String> list = new ArrayList<>();
+            int depth = 0;
+            int start = -1;
+            for (int i = 0; i < jsonArray.length(); i++) {
+                char c = jsonArray.charAt(i);
+                if (c == '{') {
+                    if (depth == 0) start = i;
+                    depth++;
+                } else if (c == '}') {
+                    depth--;
+                    if (depth == 0 && start != -1) {
+                        list.add(jsonArray.substring(start, i + 1));
+                        start = -1;
+                    }
+                }
+            }
+            return list;
         }
 
         private void handleGetAlerts(HttpExchange exchange) throws IOException {

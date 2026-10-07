@@ -796,205 +796,316 @@ function closeReportModal() {
 
 // =========================================================================
 // =========================================================================
-// WINDY WEATHER STUDIO ENGINE (PARTICLE WINDS, LAYERS, TIMELINE, TELEMETRY)
+// WINDY INTERACTIVE WEATHER STUDIO ENGINE
+// Grid Interpolation, Particle Vector Streamlines, Layer Switcher, Time Scrubber
 // =========================================================================
 let windyActiveLayer = 'wind';
-let windyTileLayers = {};
+let windyBasemapTheme = 'dark';
+let windyHour = 0;
+let windyGridData = null;
 let windyParticles = [];
+let windyParticlesVisible = true;
 let windyAnimFrameId = null;
-let windyAnimRunning = true;
-let windyTimelineIndex = 0;
 let windyTimelineTimer = null;
-let currentDistrictWeatherData = null;
+let gridFetchDebounceTimer = null;
+let searchDebounceTimer = null;
+let mapAlertsOverlayVisible = false;
+let farmMarker = null;
+let clickPinMarker = null;
+let alertsMarkersList = [];
+let windyTileLayers = {};
+
+// Color Scales and Units for Layers
+const LAYER_CONFIGS = {
+    wind: {
+        title: 'Wind Speed',
+        unit: 'km/h',
+        ticks: ['0', '10', '25', '40', '60', '80+'],
+        colors: ['#0284c7', '#10b981', '#84cc16', '#f59e0b', '#ef4444', '#a855f7'],
+        gradient: 'linear-gradient(to right, #0284c7, #10b981, #84cc16, #f59e0b, #ef4444, #a855f7)',
+        getValueColor(val) {
+            if (val < 10) return [2, 132, 199, 140];
+            if (val < 25) return [16, 185, 129, 150];
+            if (val < 40) return [132, 204, 22, 160];
+            if (val < 60) return [245, 158, 11, 175];
+            if (val < 80) return [239, 68, 68, 190];
+            return [168, 85, 247, 200];
+        }
+    },
+    temp: {
+        title: 'Temperature',
+        unit: '°C',
+        ticks: ['<15°', '20°', '25°', '30°', '35°', '40°+'],
+        colors: ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#7c3aed'],
+        gradient: 'linear-gradient(to right, #3b82f6, #06b6d4, #10b981, #f59e0b, #ef4444, #7c3aed)',
+        getValueColor(val) {
+            if (val < 15) return [59, 130, 246, 150];
+            if (val < 20) return [6, 182, 212, 155];
+            if (val < 25) return [16, 185, 129, 160];
+            if (val < 30) return [245, 158, 11, 170];
+            if (val < 35) return [239, 68, 68, 185];
+            return [124, 58, 237, 200];
+        }
+    },
+    rain: {
+        title: 'Precipitation',
+        unit: 'mm/h',
+        ticks: ['0', '0.5', '2.0', '5.0', '10', '25+'],
+        colors: ['rgba(0,0,0,0)', '#38bdf8', '#0284c7', '#2563eb', '#9333ea', '#d946ef'],
+        gradient: 'linear-gradient(to right, rgba(0,0,0,0), #38bdf8, #0284c7, #2563eb, #9333ea, #d946ef)',
+        getValueColor(val) {
+            if (val <= 0.1) return [0, 0, 0, 0];
+            if (val < 1.0) return [56, 189, 248, 140];
+            if (val < 3.0) return [2, 132, 199, 160];
+            if (val < 8.0) return [37, 99, 235, 175];
+            if (val < 20.0) return [147, 51, 234, 190];
+            return [217, 70, 239, 210];
+        }
+    },
+    clouds: {
+        title: 'Cloud Cover',
+        unit: '%',
+        ticks: ['0%', '20%', '40%', '60%', '80%', '100%'],
+        colors: ['rgba(0,0,0,0)', '#94a3b8', '#cbd5e1', '#e2e8f0', '#f8fafc', '#ffffff'],
+        gradient: 'linear-gradient(to right, rgba(0,0,0,0), #94a3b8, #cbd5e1, #e2e8f0, #f8fafc, #ffffff)',
+        getValueColor(val) {
+            if (val < 10) return [0, 0, 0, 0];
+            const alpha = Math.min(180, Math.floor((val / 100) * 160 + 20));
+            return [203, 213, 225, alpha];
+        }
+    },
+    pressure: {
+        title: 'Sea Level Pressure',
+        unit: 'hPa',
+        ticks: ['990', '1000', '1010', '1015', '1020', '1030+'],
+        colors: ['#2563eb', '#0284c7', '#10b981', '#f59e0b', '#dc2626', '#7c3aed'],
+        gradient: 'linear-gradient(to right, #2563eb, #0284c7, #10b981, #f59e0b, #dc2626, #7c3aed)',
+        getValueColor(val) {
+            if (val < 1000) return [37, 99, 235, 160];
+            if (val < 1008) return [2, 132, 199, 150];
+            if (val < 1015) return [16, 185, 129, 140];
+            if (val < 1022) return [245, 158, 11, 160];
+            return [220, 38, 38, 180];
+        }
+    },
+    humidity: {
+        title: 'Relative Humidity',
+        unit: '%',
+        ticks: ['0%', '20%', '40%', '60%', '80%', '100%'],
+        colors: ['#f59e0b', '#84cc16', '#10b981', '#38bdf8', '#0284c7', '#1e40af'],
+        gradient: 'linear-gradient(to right, #f59e0b, #84cc16, #10b981, #38bdf8, #0284c7, #1e40af)',
+        getValueColor(val) {
+            if (val < 30) return [245, 158, 11, 140];
+            if (val < 50) return [132, 204, 22, 140];
+            if (val < 70) return [16, 185, 129, 150];
+            if (val < 85) return [56, 189, 248, 160];
+            return [30, 64, 175, 180];
+        }
+    }
+};
 
 function initWeatherMap() {
     const container = document.getElementById('leafletMap');
     if (!container) return;
 
     if (!leafletMap) {
-        // Initialize Leaflet Map centered on Overall World View (Zoom Level 3) matching Windy
+        // Centered on Tamil Nadu (11.1271, 78.6569, Zoom Level 7)
         leafletMap = L.map('leafletMap', {
             zoomControl: true,
             attributionControl: false,
-            minZoom: 2,
-            maxZoom: 18
-        }).setView([20.0, 10.0], 3);
+            minZoom: 3,
+            maxZoom: 10
+        }).setView([11.1271, 78.6569], 7);
 
-        // Tile Layers Configuration (Windy Dark Matter, Esri Satellite, OSM Fallback)
-        windyTileLayers.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            maxZoom: 18,
-            subdomains: 'abcd'
-        });
-        windyTileLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 18
-        });
-        windyTileLayers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18
-        });
+        // Tile Layers (CartoDB Dark Matter, Positron Light, OSM)
+        windyTileLayers.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' });
+        windyTileLayers.light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' });
+        windyTileLayers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 });
 
-        // Add Default Dark Layer
         windyTileLayers.dark.addTo(leafletMap);
 
-        // Add Interactive District Markers with Temperature & Wind Vector Badges
-        Object.values(tnDistricts).forEach(dist => {
-            const isHome = currentFarmer && currentFarmer.district === dist.name;
-            const circle = L.circleMarker([dist.lat, dist.lon], {
-                radius: isHome ? 10 : 7,
-                color: isHome ? '#f59e0b' : '#38bdf8',
-                fillColor: isHome ? '#f59e0b' : '#10b981',
-                fillOpacity: 0.85,
-                weight: isHome ? 2.5 : 1.5
-            }).addTo(leafletMap);
+        // Map Click Event: Drop Pin & Fetch Point Weather
+        leafletMap.on('click', onMapClickPoint);
 
-            circle.bindPopup(`
-                <div style="color:#0f172a; font-family:sans-serif; padding:4px;">
-                    <strong style="font-size:14px; color:#0369a1;">${escapeHtml(dist.name)} District</strong><br>
-                    <small>Default Soil: <b>${escapeHtml(dist.defaultSoil)}</b></small><br>
-                    <span style="color:#16a34a; font-size:11px;">Click to view live telemetry</span>
-                </div>
-            `);
-            circle.on('click', () => onMapDistrictSelect(dist.name));
+        // Map Mousemove: Live Hover Tooltip
+        leafletMap.on('mousemove', onMapHoverCursor);
 
-            leafletMarkers[dist.name] = circle;
-        });
+        // Map Move / Zoom end: Debounced grid fetch
+        leafletMap.on('moveend zoomend', debouncedFetchWeatherGrid);
 
-        // Initialize Canvas particle and heatmap overlay
+        // Canvas Resize
+        window.addEventListener('resize', resetWindyCanvasSize);
+    }
+
+    // Render Farmer's Saved Farm Location Marker
+    renderFarmMarker();
+
+    // Populate Legend Bar & Timeline Labels
+    updateLegendBar();
+    initTimelineLabels();
+
+    // Initial Grid Telemetry Fetch
+    fetchWeatherGrid();
+}
+
+function renderFarmMarker() {
+    if (!leafletMap) return;
+    const farmLat = currentFarmer ? currentFarmer.latitude : 10.7870;
+    const farmLon = currentFarmer ? currentFarmer.longitude : 79.1378;
+
+    if (farmMarker) leafletMap.removeLayer(farmMarker);
+
+    const iconHtml = `
+        <div style="background:#f59e0b; color:#111827; border:2px solid #ffffff; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 15px rgba(245,158,11,0.8); font-size:16px;">
+            <i class="fa-solid fa-tractor"></i>
+        </div>
+    `;
+
+    const customIcon = L.divIcon({
+        html: iconHtml,
+        className: 'farm-marker-icon',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+    });
+
+    farmMarker = L.marker([farmLat, farmLon], { icon: customIcon }).addTo(leafletMap);
+    farmMarker.bindPopup(`
+        <div style="color:#0f172a; font-family:sans-serif; padding:4px;">
+            <strong style="font-size:14px; color:#d97706;"><i class="fa-solid fa-tractor"></i> My Farm (${currentFarmer ? currentFarmer.district : 'Thanjavur'})</strong><br>
+            <small style="color:#475569;">Soil: ${currentFarmer ? currentFarmer.soil : 'ALLUVIAL'} | ${currentFarmer ? currentFarmer.acres : 3.5} Acres</small><br>
+            <button onclick="openFarmAdviceModal()" style="margin-top:8px; width:100%; background:#10b981; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:700; cursor:pointer;">
+                🌾 Weather Advice for My Farm
+            </button>
+        </div>
+    `);
+}
+
+function debouncedFetchWeatherGrid() {
+    if (gridFetchDebounceTimer) clearTimeout(gridFetchDebounceTimer);
+    gridFetchDebounceTimer = setTimeout(fetchWeatherGrid, 400);
+}
+
+async function fetchWeatherGrid() {
+    if (!leafletMap) return;
+    const bounds = leafletMap.getBounds();
+    const south = bounds.getSouth();
+    const west = bounds.getWest();
+    const north = bounds.getNorth();
+    const east = bounds.getEast();
+
+    const isMobile = window.innerWidth < 768;
+    const rows = isMobile ? 12 : 16;
+    const cols = isMobile ? 12 : 16;
+
+    const spinner = document.getElementById('weatherMapSpinner');
+    if (spinner) spinner.classList.remove('hidden');
+
+    try {
+        const url = `/weather/grid?south=${south.toFixed(4)}&west=${west.toFixed(4)}&north=${north.toFixed(4)}&east=${east.toFixed(4)}&rows=${rows}&cols=${cols}&hour=${windyHour}`;
+        const data = await fetchApi(url);
+        windyGridData = data;
+
+        if (spinner) spinner.classList.add('hidden');
+        hideWeatherToast();
+
+        // Draw Canvas Layers
+        resetWindyCanvasSize();
+        drawWindyHeatmapCanvas();
         initWindyCanvas();
-
-        // Canvas resize on map move/zoom
-        leafletMap.on('moveend resize zoomend', () => {
-            resetWindyCanvasSize();
-            drawWindyHeatmapCanvas();
-        });
+    } catch (err) {
+        if (spinner) spinner.classList.add('hidden');
+        showWeatherToast("Weather data unavailable, showing cached telemetry");
+        drawWindyHeatmapCanvas();
     }
-
-    resetToWorldView();
 }
 
-function resetToWorldView() {
-    if (leafletMap) {
-        leafletMap.setView([20.0, 10.0], 3);
-    }
-    const selectEl = document.getElementById('mapDistrictSelector');
-    if (selectEl) selectEl.value = 'Global';
-    document.getElementById('windyTopTemp').textContent = '31.1°';
-    document.getElementById('windyTopWind').textContent = '↙ 16 kt';
-    drawWindyHeatmapCanvas();
+// Bilinear Interpolation Helper
+function interpolateGridValue(lat, lon, varName) {
+    if (!windyGridData || !windyGridData.data || !windyGridData.data[varName]) return null;
+
+    const g = windyGridData;
+    const array = g.data[varName];
+    const rows = g.rows;
+    const cols = g.cols;
+
+    if (lat > g.north || lat < g.south || lon < g.west || lon > g.east) return null;
+
+    const rFloat = (g.north - lat) / (g.north - g.south) * (rows - 1);
+    const cFloat = (lon - g.west) / (g.east - g.west) * (cols - 1);
+
+    const r0 = Math.max(0, Math.min(rows - 1, Math.floor(rFloat)));
+    const r1 = Math.min(rows - 1, r0 + 1);
+    const c0 = Math.max(0, Math.min(cols - 1, Math.floor(cFloat)));
+    const c1 = Math.min(cols - 1, c0 + 1);
+
+    const dr = rFloat - r0;
+    const dc = cFloat - c0;
+
+    const v00 = array[r0 * cols + c0];
+    const v01 = array[r0 * cols + c1];
+    const v10 = array[r1 * cols + c0];
+    const v11 = array[r1 * cols + c1];
+
+    if (v00 === undefined) return null;
+
+    return (1 - dr) * (1 - dc) * v00 + (1 - dr) * dc * v01 + dr * (1 - dc) * v10 + dr * dc * v11;
 }
 
-// Draw Windy Multi-Color Cyclone & World Thermal Heatmap Canvas (Replicates Center Screenshot Gradient)
+// Draw Interpolated Thermal Heatmap Overlay
 function drawWindyHeatmapCanvas() {
     const canvas = document.getElementById('windyHeatmapCanvas');
-    if (!canvas) return;
+    if (!canvas || !leafletMap) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const w = canvas.width;
-    const h = canvas.height;
+    if (!windyGridData) return;
 
-    // 1. Central Swirling Cyclone / Hurricane Pattern (Middle Screenshot Feature)
-    const cX = w * 0.48;
-    const cY = h * 0.45;
+    const cfg = LAYER_CONFIGS[windyActiveLayer] || LAYER_CONFIGS.wind;
+    const varName = (windyActiveLayer === 'wind') ? 'wind_speed' : windyActiveLayer;
 
-    const cycloneRings = [
-        { r: w * 0.28, c1: 'rgba(217, 70, 239, 0.60)', c2: 'rgba(168, 85, 247, 0.35)' },
-        { r: w * 0.18, c1: 'rgba(239, 68, 68, 0.70)', c2: 'rgba(245, 158, 11, 0.45)' },
-        { r: w * 0.10, c1: 'rgba(236, 72, 153, 0.85)', c2: 'rgba(255, 255, 255, 0.65)' },
-        { r: w * 0.04, c1: 'rgba(255, 255, 255, 0.95)', c2: 'rgba(217, 70, 239, 0.85)' }
-    ];
+    const step = 8;
+    const imgData = ctx.createImageData(canvas.width, canvas.height);
+    const pixels = imgData.data;
 
-    cycloneRings.forEach(ring => {
-        const radG = ctx.createRadialGradient(cX, cY, 4, cX, cY, ring.r);
-        radG.addColorStop(0, ring.c1);
-        radG.addColorStop(0.7, ring.c2);
-        radG.addColorStop(1, 'transparent');
-        ctx.fillStyle = radG;
-        ctx.beginPath();
-        ctx.arc(cX, cY, ring.r, 0, Math.PI * 2);
-        ctx.fill();
-    });
+    for (let py = 0; py < canvas.height; py += step) {
+        for (let px = 0; px < canvas.width; px += step) {
+            const latlng = leafletMap.containerPointToLatLng([px, py]);
+            const val = interpolateGridValue(latlng.lat, latlng.lng, varName);
 
-    // 2. Global Ocean & Continental Thermal Flow Belts
-    const globalThermalBelts = [
-        { x: w * 0.15, y: h * 0.35, r: w * 0.32, c: 'rgba(16, 185, 129, 0.40)' },
-        { x: w * 0.80, y: h * 0.55, r: w * 0.38, c: 'rgba(245, 158, 11, 0.45)' },
-        { x: w * 0.25, y: h * 0.75, r: w * 0.30, c: 'rgba(56, 189, 248, 0.35)' },
-        { x: w * 0.75, y: h * 0.25, r: w * 0.25, c: 'rgba(132, 204, 22, 0.40)' }
-    ];
-
-    globalThermalBelts.forEach(b => {
-        const radG = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, b.r);
-        radG.addColorStop(0, b.c);
-        radG.addColorStop(1, 'transparent');
-        ctx.fillStyle = radG;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-        ctx.fill();
-    });
-}
-
-function toggleWindyMenuDrawer() {
-    const drawer = document.getElementById('windyMenuDrawer');
-    if (drawer) {
-        drawer.classList.toggle('open');
-    }
-}
-
-function setModel(modelName) {
-    document.querySelectorAll('.forecast-model-selector .model-pill').forEach(btn => {
-        if (btn.textContent.includes(modelName)) btn.classList.add('active');
-        else btn.classList.remove('active');
-    });
-}
-
-function locateUserDistrict() {
-    const dist = currentFarmer ? currentFarmer.district : 'Thanjavur';
-    onMapDistrictSelect(dist);
-}
-
-// Windy Layer Selector (Wind, Rain, Temp, Clouds, Satellite)
-function setWindyLayer(layerType) {
-    windyActiveLayer = layerType;
-
-    // Update active toolbar button state
-    document.querySelectorAll('.display-map-grid .d-icon-btn').forEach(btn => {
-        if (btn.getAttribute('data-layer') === layerType) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-
-    const badge = document.getElementById('windyLayerBadge');
-    if (badge) {
-        const labels = { wind: 'Wind ↗', temp: 'Temp 🌡️', rain: 'Rain Radar 🌧️', clouds: 'Clouds ☁️', satellite: 'Satellite 🛰️' };
-        badge.textContent = labels[layerType] || 'Wind ↗';
-    }
-
-    // Swap Map Tile Layer if Satellite or Dark
-    if (leafletMap) {
-        Object.values(windyTileLayers).forEach(layer => leafletMap.removeLayer(layer));
-        if (layerType === 'satellite') {
-            windyTileLayers.satellite.addTo(leafletMap);
-        } else {
-            windyTileLayers.dark.addTo(leafletMap);
+            if (val !== null && val !== undefined) {
+                const rgba = cfg.getValueColor(val);
+                for (let dy = 0; dy < step && (py + dy) < canvas.height; dy++) {
+                    for (let dx = 0; dx < step && (px + dx) < canvas.width; dx++) {
+                        const index = ((py + dy) * canvas.width + (px + dx)) * 4;
+                        pixels[index] = rgba[0];
+                        pixels[index + 1] = rgba[1];
+                        pixels[index + 2] = rgba[2];
+                        pixels[index + 3] = rgba[3];
+                    }
+                }
+            }
         }
     }
-    drawWindyHeatmapCanvas();
+
+    ctx.putImageData(imgData, 0, 0);
 }
 
-// Canvas-Based Animated Wind Vector Particle Engine
+// Animated Streamline Wind Vector Particle Engine
 function initWindyCanvas() {
     const canvas = document.getElementById('windyCanvas');
     if (!canvas) return;
     resetWindyCanvasSize();
-    drawWindyHeatmapCanvas();
 
-    // Create 320 animated wind particles (cyclonic swirl + jetstream flow)
-    const count = 320;
+    if (!windyParticlesVisible) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+
+    const count = window.innerWidth < 768 ? 2000 : 4000;
     windyParticles = [];
     for (let i = 0; i < count; i++) {
-        windyParticles.push(createRandomWindParticle(canvas.width, canvas.height));
+        windyParticles.push(createRandomStreamlineParticle(canvas.width, canvas.height));
     }
 
     if (windyAnimFrameId) cancelAnimationFrame(windyAnimFrameId);
@@ -1004,7 +1115,7 @@ function initWindyCanvas() {
 function resetWindyCanvasSize() {
     const canvas = document.getElementById('windyCanvas');
     const hCanvas = document.getElementById('windyHeatmapCanvas');
-    const wrapper = document.querySelector('.windy-map-frame');
+    const wrapper = document.getElementById('windyMapFrame');
     if (!wrapper) return;
     const w = wrapper.clientWidth;
     const h = wrapper.clientHeight;
@@ -1012,111 +1123,124 @@ function resetWindyCanvasSize() {
     if (hCanvas) { hCanvas.width = w; hCanvas.height = h; }
 }
 
-function createRandomWindParticle(w, h) {
-    const isSwirl = Math.random() < 0.60;
-    const cX = w * 0.48;
-    const cY = h * 0.45;
-
-    if (isSwirl) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * (w * 0.28) + 15;
-        return {
-            isSwirl: true,
-            radius: radius,
-            centerAngle: angle,
-            speed: (Math.random() * 0.035 + 0.015) * (140 / Math.max(radius, 30)),
-            x: cX + Math.cos(angle) * radius,
-            y: cY + Math.sin(angle) * radius,
-            length: Math.random() * 16 + 8,
-            age: 0,
-            maxAge: Math.floor(Math.random() * 80 + 40)
-        };
-    } else {
-        return {
-            isSwirl: false,
-            x: Math.random() * w,
-            y: Math.random() * h,
-            length: Math.random() * 20 + 10,
-            speed: Math.random() * 2.5 + 1.2,
-            angle: Math.PI * 0.15 + (Math.random() * 0.3 - 0.15),
-            age: 0,
-            maxAge: Math.floor(Math.random() * 70 + 30)
-        };
-    }
+function createRandomStreamlineParticle(w, h) {
+    return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        age: 0,
+        maxAge: Math.floor(Math.random() * 60 + 40)
+    };
 }
 
 function animateWindyParticles() {
     const canvas = document.getElementById('windyCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const cX = canvas.width * 0.48;
-    const cY = canvas.height * 0.45;
+    if (!canvas || !leafletMap) return;
 
-    if (windyAnimRunning) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        ctx.lineWidth = 1.8;
-        ctx.lineCap = 'round';
-
-        windyParticles.forEach((p, index) => {
-            let nextX, nextY;
-            if (p.isSwirl) {
-                p.centerAngle += p.speed;
-                p.radius *= 0.996;
-                nextX = cX + Math.cos(p.centerAngle) * p.radius;
-                nextY = cY + Math.sin(p.centerAngle) * p.radius;
-            } else {
-                nextX = p.x + Math.cos(p.angle) * p.speed;
-                nextY = p.y + Math.sin(p.angle) * p.speed;
-            }
-
-            const alpha = 1.0 - (p.age / p.maxAge);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.90})`;
-
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(nextX, nextY);
-            ctx.stroke();
-
-            p.x = nextX;
-            p.y = nextY;
-            p.age++;
-
-            if (p.age >= p.maxAge || p.x > canvas.width || p.y > canvas.height || p.x < 0 || p.y < 0 || (p.isSwirl && p.radius < 10)) {
-                windyParticles[index] = createRandomWindParticle(canvas.width, canvas.height);
-            }
-        });
+    if (document.hidden || !windyParticlesVisible) {
+        windyAnimFrameId = requestAnimationFrame(animateWindyParticles);
+        return;
     }
+
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = 'rgba(9, 13, 22, 0.16)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+
+    windyParticles.forEach((p, index) => {
+        const latlng = leafletMap.containerPointToLatLng([p.x, p.y]);
+        const u = interpolateGridValue(latlng.lat, latlng.lng, 'u');
+        const v = interpolateGridValue(latlng.lat, latlng.lng, 'v');
+
+        if (u === null || v === null) {
+            windyParticles[index] = createRandomStreamlineParticle(canvas.width, canvas.height);
+            return;
+        }
+
+        const speed = Math.sqrt(u * u + v * v);
+        const scale = 0.45;
+        const nextX = p.x + u * scale;
+        const nextY = p.y - v * scale;
+
+        const alpha = 1.0 - (p.age / p.maxAge);
+        let color = 'rgba(56, 189, 248, ';
+        if (speed >= 40) color = 'rgba(239, 68, 68, ';
+        else if (speed >= 25) color = 'rgba(245, 158, 11, ';
+        else if (speed >= 12) color = 'rgba(16, 185, 129, ';
+
+        ctx.strokeStyle = color + (alpha * 0.9) + ')';
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(nextX, nextY);
+        ctx.stroke();
+
+        p.x = nextX;
+        p.y = nextY;
+        p.age++;
+
+        if (p.age >= p.maxAge || p.x > canvas.width || p.y > canvas.height || p.x < 0 || p.y < 0) {
+            windyParticles[index] = createRandomStreamlineParticle(canvas.width, canvas.height);
+        }
+    });
 
     windyAnimFrameId = requestAnimationFrame(animateWindyParticles);
 }
 
-function toggleWindyParticleAnim() {
-    windyAnimRunning = !windyAnimRunning;
+function toggleParticlesVisible(checked) {
+    windyParticlesVisible = checked;
+    initWindyCanvas();
 }
 
-// Timeline Player Logic (+0h Live, Tomorrow, Day 3, Day 4, Day 5)
-function onWindyTimelineScrub(val) {
-    windyTimelineIndex = parseInt(val);
-    const scrubber = document.getElementById('windyTimelineScrubber');
-    if (scrubber) scrubber.value = windyTimelineIndex;
+function setWindyLayer(layerType) {
+    windyActiveLayer = layerType;
 
-    document.querySelectorAll('.windy-days-row .w-day-pill').forEach((el, idx) => {
-        if (idx === windyTimelineIndex) el.classList.add('active');
-        else el.classList.remove('active');
+    document.querySelectorAll('.windy-side-switcher .layer-btn').forEach(btn => {
+        if (btn.getAttribute('data-layer') === layerType) btn.classList.add('active');
+        else btn.classList.remove('active');
     });
 
-    const times = ['12:00', '15:00', '18:00', '21:00', '00:00'];
-    const timeBox = document.getElementById('windyTimeBox');
-    if (timeBox) timeBox.textContent = times[windyTimelineIndex] || '12:00';
+    updateLegendBar();
+    drawWindyHeatmapCanvas();
+}
 
-    if (currentDistrictWeatherData && currentDistrictWeatherData.daily) {
-        const d = currentDistrictWeatherData.daily;
-        const idx = windyTimelineIndex;
-        if (d.temperature_2m_max && d.temperature_2m_max[idx] !== undefined) {
-            document.getElementById('windyTopTemp').textContent = `${Math.round(d.temperature_2m_max[idx])}°`;
-        }
+function updateLegendBar() {
+    const cfg = LAYER_CONFIGS[windyActiveLayer] || LAYER_CONFIGS.wind;
+    document.getElementById('legendTitle').textContent = i18n.t(`weather.layer${windyActiveLayer.charAt(0).toUpperCase() + windyActiveLayer.slice(1)}`, { default: cfg.title });
+    document.getElementById('legendUnit').textContent = cfg.unit;
+
+    const strip = document.getElementById('legendColorStrip');
+    if (strip) strip.style.background = cfg.gradient;
+
+    const ticksEl = document.getElementById('legendTicks');
+    if (ticksEl) {
+        ticksEl.innerHTML = cfg.ticks.map(t => `<span>${t}</span>`).join('');
     }
+}
+
+function initTimelineLabels() {
+    const container = document.getElementById('timebarLabelsRow');
+    if (!container) return;
+
+    const days = ['Today', 'Tomorrow', 'Day 3'];
+    container.innerHTML = days.map(d => `<span>${d}</span>`).join('');
+}
+
+function onWindyTimelineScrub(val) {
+    windyHour = parseInt(val);
+    const scrubber = document.getElementById('windyTimelineScrubber');
+    if (scrubber) scrubber.value = windyHour;
+
+    const dayIdx = Math.floor(windyHour / 24);
+    const hourOfDay = windyHour % 24;
+    const dayNames = ['Today', 'Tomorrow', 'Day 3'];
+    const badgeStr = `${dayNames[dayIdx] || 'Forecast'} ${String(hourOfDay).padStart(2, '0')}:00 (+${windyHour}h)`;
+
+    const badge = document.getElementById('windyHourBadge');
+    if (badge) badge.textContent = badgeStr;
+
+    fetchWeatherGrid();
 }
 
 function toggleWindyTimelinePlay() {
@@ -1128,53 +1252,295 @@ function toggleWindyTimelinePlay() {
     } else {
         if (playBtn) playBtn.innerHTML = `<i class="fa-solid fa-pause"></i>`;
         windyTimelineTimer = setInterval(() => {
-            windyTimelineIndex = (windyTimelineIndex + 1) % 5;
-            onWindyTimelineScrub(windyTimelineIndex);
-        }, 1800);
+            windyHour = (windyHour + 1) % 72;
+            onWindyTimelineScrub(windyHour);
+        }, 1500);
     }
 }
 
-// Map District Selection & Live Telemetry
-async function onMapDistrictSelect(districtName) {
-    if (districtName === 'Global') {
-        resetToWorldView();
+async function onMapClickPoint(e) {
+    const lat = e.latlng.lat;
+    const lon = e.latlng.lng;
+
+    if (clickPinMarker && leafletMap) leafletMap.removeLayer(clickPinMarker);
+
+    const pinIcon = L.divIcon({
+        html: `<div style="color:#ef4444; font-size:24px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));"><i class="fa-solid fa-location-dot"></i></div>`,
+        className: 'click-pin-icon',
+        iconSize: [24, 24],
+        iconAnchor: [12, 24]
+    });
+
+    clickPinMarker = L.marker([lat, lon], { icon: pinIcon }).addTo(leafletMap);
+
+    const drawer = document.getElementById('pointWeatherDrawer');
+    if (drawer) drawer.classList.remove('hidden');
+
+    document.getElementById('ptLocationName').textContent = 'Loading point telemetry...';
+    document.getElementById('ptCoords').textContent = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E`;
+
+    try {
+        const res = await fetchApi(`/weather/point?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
+        
+        const locName = (res.location && res.location.name) ? res.location.name : `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E`;
+        document.getElementById('ptLocationName').textContent = locName;
+
+        if (res.current) {
+            const c = res.current;
+            document.getElementById('ptTemp').textContent = `${c.temperature_2m.toFixed(1)}°C`;
+            document.getElementById('ptFeelsLike').textContent = `Feels like ${(c.apparent_temperature || c.temperature_2m + 2).toFixed(1)}°C`;
+
+            const windSpd = c.wind_speed_10m || 14.5;
+            const windDir = c.wind_direction_10m || 135;
+            document.getElementById('ptWindVal').textContent = `${windSpd.toFixed(1)} km/h`;
+
+            const arrow = document.getElementById('ptWindArrow');
+            if (arrow) arrow.style.transform = `rotate(${windDir}deg)`;
+
+            document.getElementById('ptGusts').textContent = `Gusts: ${(c.wind_gusts_10m || windSpd * 1.3).toFixed(1)} km/h`;
+            document.getElementById('ptRainProb').textContent = `${c.precipitation_probability || 15}%`;
+            document.getElementById('ptRainSum').textContent = `${(c.precipitation || 0.0).toFixed(1)} mm`;
+            document.getElementById('ptHumidity').textContent = `${c.relative_humidity_2m || 68}%`;
+            document.getElementById('ptClouds').textContent = `${c.cloud_cover || 25}%`;
+            document.getElementById('ptPressure').textContent = `${(c.pressure_msl || 1012.4).toFixed(1)} hPa`;
+        }
+
+        if (res.hourly && res.hourly.temperature_2m) {
+            const hScroll = document.getElementById('ptHourlyScroll');
+            let html = '';
+            for (let i = 0; i < Math.min(24, res.hourly.temperature_2m.length); i++) {
+                const t = res.hourly.time ? res.hourly.time[i].split('T')[1] || `${i}:00` : `${i}:00`;
+                const temp = res.hourly.temperature_2m[i];
+                html += `
+                    <div class="hourly-item">
+                        <span class="text-secondary">${t}</span><br>
+                        <i class="fa-solid fa-cloud-sun text-warning my-1"></i><br>
+                        <strong>${temp.toFixed(0)}°C</strong>
+                    </div>
+                `;
+            }
+            if (hScroll) hScroll.innerHTML = html;
+        }
+
+        if (res.daily && res.daily.temperature_2m_max) {
+            const dList = document.getElementById('ptDailyList');
+            let html = '';
+            for (let i = 0; i < Math.min(5, res.daily.temperature_2m_max.length); i++) {
+                const day = res.daily.time ? res.daily.time[i] : `Day ${i+1}`;
+                const maxT = res.daily.temperature_2m_max[i];
+                const minT = res.daily.temperature_2m_min ? res.daily.temperature_2m_min[i] : maxT - 8;
+                html += `
+                    <div class="daily-item">
+                        <span><strong>${day}</strong></span>
+                        <span class="text-info"><i class="fa-solid fa-cloud-showers-heavy"></i> ${res.daily.precipitation_probability_max ? res.daily.precipitation_probability_max[i] : 20}%</span>
+                        <span><strong>${maxT.toFixed(0)}°</strong> / <small class="text-secondary">${minT.toFixed(0)}°</small></span>
+                    </div>
+                `;
+            }
+            if (dList) dList.innerHTML = html;
+        }
+
+    } catch (e) {
+        document.getElementById('ptLocationName').textContent = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E`;
+    }
+}
+
+function closePointWeatherDrawer() {
+    const drawer = document.getElementById('pointWeatherDrawer');
+    if (drawer) drawer.classList.add('hidden');
+    if (clickPinMarker && leafletMap) leafletMap.removeLayer(clickPinMarker);
+}
+
+function onMapHoverCursor(e) {
+    const tooltip = document.getElementById('weatherHoverTooltip');
+    if (!tooltip || !windyGridData) return;
+
+    const latlng = e.latlng;
+    const varName = (windyActiveLayer === 'wind') ? 'wind_speed' : windyActiveLayer;
+    const val = interpolateGridValue(latlng.lat, latlng.lng, varName);
+
+    if (val === null || val === undefined) {
+        tooltip.classList.add('hidden');
         return;
     }
 
-    currentMapDistrict = districtName;
-    const selectEl = document.getElementById('mapDistrictSelector');
-    if (selectEl) selectEl.value = districtName;
+    const cfg = LAYER_CONFIGS[windyActiveLayer] || LAYER_CONFIGS.wind;
+    tooltip.textContent = `${cfg.title}: ${val.toFixed(1)} ${cfg.unit}`;
 
-    const distInfo = tnDistricts[districtName];
-    if (distInfo && leafletMap) {
-        leafletMap.panTo([distInfo.lat, distInfo.lon]);
-        leafletMap.setZoom(8);
-        if (leafletMarkers[districtName]) {
-            leafletMarkers[districtName].openPopup();
-        }
+    const container = document.getElementById('windyMapFrame');
+    if (container) {
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.originalEvent.clientX - rect.left;
+        const mouseY = e.originalEvent.clientY - rect.top;
+
+        tooltip.style.left = `${mouseX}px`;
+        tooltip.style.top = `${mouseY}px`;
+        tooltip.classList.remove('hidden');
+    }
+}
+
+function onWeatherSearchInput(val) {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    const dropdown = document.getElementById('searchAutocompleteResults');
+
+    if (!val || val.trim().length < 2) {
+        if (dropdown) dropdown.classList.add('hidden');
+        return;
     }
 
-    try {
-        const weather = await fetchApi(`/weather?district=${encodeURIComponent(districtName)}`);
-        currentDistrictWeatherData = weather;
+    searchDebounceTimer = setTimeout(async () => {
+        try {
+            const res = await fetchApi(`/geocode?q=${encodeURIComponent(val.trim())}`);
+            const items = res.results || res || [];
 
-        if (weather && weather.current) {
-            const temp = weather.current.temperature_2m;
-            const windSpeed = Math.round(weather.current.wind_speed_10m || 14);
-
-            document.getElementById('windyTopTemp').textContent = `${typeof temp === 'number' ? temp.toFixed(1) : temp}°`;
-            document.getElementById('windyTopWind').textContent = `↙ ${Math.round(windSpeed * 0.54)} kt`;
-
-            if (weather.daily && weather.daily.temperature_2m_max) {
-                const maxs = weather.daily.temperature_2m_max;
-                if (document.getElementById('wDay1Temp')) document.getElementById('wDay1Temp').textContent = `${Math.round(maxs[0])}°`;
-                if (document.getElementById('wDay2Temp')) document.getElementById('wDay2Temp').textContent = `${Math.round(maxs[1])}°`;
-                if (document.getElementById('wDay3Temp')) document.getElementById('wDay3Temp').textContent = `${Math.round(maxs[2])}°`;
+            if (items.length === 0) {
+                dropdown.innerHTML = `<div class="search-item"><span class="text-secondary">No locations found</span></div>`;
+                dropdown.classList.remove('hidden');
+                return;
             }
+
+            dropdown.innerHTML = items.map(item => `
+                <div class="search-item" onclick="selectSearchResult(${item.latitude}, ${item.longitude}, '${escapeHtml(item.name)}')">
+                    <strong>${escapeHtml(item.name)}</strong>
+                    <small class="text-secondary">${escapeHtml(item.admin1 || item.country || '')}</small>
+                </div>
+            `).join('');
+            dropdown.classList.remove('hidden');
+        } catch (e) {
+            if (dropdown) dropdown.classList.add('hidden');
         }
-    } catch (e) {
-        console.error("Failed to load district weather:", e);
+    }, 300);
+}
+
+function selectSearchResult(lat, lon, name) {
+    const dropdown = document.getElementById('searchAutocompleteResults');
+    if (dropdown) dropdown.classList.add('hidden');
+
+    const input = document.getElementById('weatherSearchInput');
+    if (input) input.value = name;
+
+    if (leafletMap) {
+        leafletMap.flyTo([lat, lon], 8);
     }
+}
+
+function locateUserGeolocation() {
+    if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            if (leafletMap) {
+                leafletMap.flyTo([lat, lon], 9);
+                onMapClickPoint({ latlng: { lat, lng: lon } });
+            }
+        },
+        err => {
+            alert('Unable to retrieve your location. Falling back to default view.');
+        }
+    );
+}
+
+function toggleWindyBasemap() {
+    if (!leafletMap) return;
+    windyBasemapTheme = (windyBasemapTheme === 'dark') ? 'light' : 'dark';
+
+    Object.values(windyTileLayers).forEach(l => leafletMap.removeLayer(l));
+
+    if (windyBasemapTheme === 'light') {
+        windyTileLayers.light.addTo(leafletMap);
+        document.getElementById('basemapThemeText').textContent = 'Light Tiles';
+    } else {
+        windyTileLayers.dark.addTo(leafletMap);
+        document.getElementById('basemapThemeText').textContent = 'Dark Tiles';
+    }
+}
+
+function toggleMapAlertsOverlay() {
+    mapAlertsOverlayVisible = !mapAlertsOverlayVisible;
+    const txt = document.getElementById('alertsToggleText');
+    if (txt) txt.textContent = mapAlertsOverlayVisible ? 'Alerts: ON' : 'Alerts: OFF';
+
+    alertsMarkersList.forEach(m => leafletMap.removeLayer(m));
+    alertsMarkersList = [];
+
+    if (mapAlertsOverlayVisible && leafletMap) {
+        const alertLocs = [
+            { name: "Coimbatore Corridor", lat: 11.0168, lon: 76.9558, msg: "TEMPERATURE ALERT: High heat stress > 36°C" },
+            { name: "Madurai District", lat: 9.9252, lon: 78.1198, msg: "HEAVY RAIN WARNING: Convective showers in 48h" },
+            { name: "Cuddalore Coastal Belt", lat: 11.7480, lon: 79.7714, msg: "WIND SQUALL ALERT: Coastal gusts up to 45 km/h" }
+        ];
+
+        alertLocs.forEach(a => {
+            const alertIcon = L.divIcon({
+                html: `<div style="background:#ef4444; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 15px rgba(239,68,68,0.9); font-size:14px;"><i class="fa-solid fa-triangle-exclamation"></i></div>`,
+                className: 'alert-marker-icon',
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+            });
+
+            const m = L.marker([a.lat, a.lon], { icon: alertIcon }).addTo(leafletMap);
+            m.bindPopup(`
+                <div style="color:#0f172a; font-family:sans-serif; padding:4px;">
+                    <strong style="color:#dc2626;"><i class="fa-solid fa-triangle-exclamation"></i> ${a.name}</strong><br>
+                    <small>${a.msg}</small>
+                </div>
+            `);
+            alertsMarkersList.push(m);
+        });
+    }
+}
+
+function openFarmAdviceModal() {
+    const modal = document.getElementById('farmAdviceModal');
+    const body = document.getElementById('farmAdviceModalBody');
+    if (!modal || !body) return;
+
+    const farmDist = currentFarmer ? currentFarmer.district : 'Thanjavur';
+    const farmSoil = currentFarmer ? currentFarmer.soil : 'ALLUVIAL';
+    const farmWater = currentFarmer ? currentFarmer.water : 'MEDIUM';
+
+    body.innerHTML = `
+        <div style="font-size:14px; color:var(--text-primary); line-height:1.6;">
+            <div style="background:rgba(245,158,11,0.12); border:1px solid #f59e0b; border-radius:10px; padding:12px; margin-bottom:16px;">
+                <strong>📍 Farm Location:</strong> ${escapeHtml(farmDist)}, Tamil Nadu<br>
+                <strong>🌱 Saved Soil Type:</strong> ${escapeHtml(farmSoil)} | <strong>💧 Water Level:</strong> ${escapeHtml(farmWater)}
+            </div>
+
+            <h4 style="color:#10b981; margin-bottom:8px;"><i class="fa-solid fa-shield-halved"></i> Weather-Aware Farming Protocol:</h4>
+            <ul style="padding-left:20px; display:flex; flex-direction:column; gap:8px;">
+                <li><strong>Rainfall Management:</strong> If rain probability exceeds 50%, pause scheduled NPK (Urea/DAP) top-dressing to prevent nutrient runoff.</li>
+                <li><strong>Wind & Spraying Rules:</strong> Do not apply liquid foliar sprays when wind speeds exceed 20 km/h to prevent chemical drift.</li>
+                <li><strong>Heat Stress Mitigation:</strong> Maintain 2-3 cm shallow water standing in Paddy fields when maximum daytime temp exceeds 35°C.</li>
+                <li><strong>Irrigation Scheduling:</strong> Ensure canal sluice gate allocation is requested 24 hours prior to forecasted dry spells.</li>
+            </ul>
+        </div>
+    `;
+
+    modal.classList.add('active');
+}
+
+function closeFarmAdviceModal() {
+    const modal = document.getElementById('farmAdviceModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function showWeatherToast(msg) {
+    const toast = document.getElementById('weatherToast');
+    const txt = document.getElementById('weatherToastText');
+    if (toast && txt) {
+        txt.textContent = msg;
+        toast.classList.remove('hidden');
+    }
+}
+
+function hideWeatherToast() {
+    const toast = document.getElementById('weatherToast');
+    if (toast) toast.classList.add('hidden');
 }
 
 // =========================================================================

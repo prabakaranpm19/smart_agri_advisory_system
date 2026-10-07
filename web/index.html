@@ -454,183 +454,174 @@
                     </div>
                 </section>
 
-                <!-- SECTION 6: WINDY MOBILE WEATHER APP INTERFACE -->
+                <!-- SECTION 6: WINDY INTERACTIVE WEATHER STUDIO -->
                 <section id="section-weather" class="content-section">
-                    <div class="windy-mobile-container">
+                    <div class="windy-studio-container">
                         
-                        <!-- Top Floating Header Bar (Search & Location Target) -->
-                        <div class="windy-mobile-header">
-                            <div class="windy-search-pill">
+                        <!-- Top Floating Studio Controls -->
+                        <div class="windy-studio-topbar glass-card">
+                            <div class="windy-search-wrapper">
                                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                                <select id="mapDistrictSelector" class="windy-district-select" onchange="onMapDistrictSelect(this.value)">
-                                    <!-- Injected by JS -->
-                                </select>
+                                <input type="text" id="weatherSearchInput" placeholder="Search city, village or location..." autocomplete="off" oninput="onWeatherSearchInput(this.value)">
+                                <div id="searchAutocompleteResults" class="search-autocomplete-dropdown hidden"></div>
                             </div>
-                            <button class="btn-location-target" onclick="locateUserDistrict()" title="Find My Location">
-                                <i class="fa-solid fa-location-arrow"></i>
-                            </button>
-                        </div>
 
-                        <!-- Top Floating Live Weather & 3-Day Card Widget (Left Screenshot) -->
-                        <div class="windy-top-weather-card card glass-card">
-                            <div class="w-card-left">
-                                <span class="w-main-temp" id="windyTopTemp">31°</span>
-                                <span class="w-main-wind" id="windyTopWind">↙ 14 kt</span>
-                            </div>
-                            <div class="w-card-right">
-                                <div class="w-3day-grid">
-                                    <div class="w-day-col">
-                                        <span class="w-day-lbl">MON</span>
-                                        <i class="fa-solid fa-cloud-sun text-warning"></i>
-                                        <strong id="wDay1Temp">31°</strong>
-                                    </div>
-                                    <div class="w-day-col">
-                                        <span class="w-day-lbl">TUE</span>
-                                        <i class="fa-solid fa-sun text-warning"></i>
-                                        <strong id="wDay2Temp">33°</strong>
-                                    </div>
-                                    <div class="w-day-col">
-                                        <span class="w-day-lbl">WED</span>
-                                        <i class="fa-solid fa-cloud-showers-heavy text-info"></i>
-                                        <strong id="wDay3Temp">30°</strong>
-                                    </div>
-                                </div>
-                                <div class="rainbow-gradient-bar"></div>
+                            <div class="windy-topbar-actions">
+                                <button class="btn-studio-action" id="btnMyLocation" onclick="locateUserGeolocation()" title="My Location">
+                                    <i class="fa-solid fa-location-crosshairs"></i> <span data-i18n="weather.myLocation">My Location</span>
+                                </button>
+                                <button class="btn-studio-action" id="btnFarmAdvice" onclick="openFarmAdviceModal()" title="Weather Advice for My Farm">
+                                    <i class="fa-solid fa-tractor text-warning"></i> <span data-i18n="weather.farmAdvice">Farm Advice</span>
+                                </button>
+                                <button class="btn-studio-action" id="btnToggleAlerts" onclick="toggleMapAlertsOverlay()" title="Show Weather Risk Alerts">
+                                    <i class="fa-solid fa-triangle-exclamation text-danger"></i> <span id="alertsToggleText">Alerts: Off</span>
+                                </button>
+                                <button class="btn-studio-action" id="btnBasemapTheme" onclick="toggleWindyBasemap()" title="Toggle Basemap Light/Dark">
+                                    <i class="fa-solid fa-layer-group"></i> <span id="basemapThemeText">Dark Tiles</span>
+                                </button>
                             </div>
                         </div>
 
                         <!-- Main Map Studio Frame -->
-                        <div class="windy-map-frame">
+                        <div class="windy-map-frame" id="windyMapFrame">
                             <div id="leafletMap" class="leaflet-map-container"></div>
-                            <!-- Canvas Layer 1: Vivid Gradient Heatmap -->
+                            <!-- Canvas Layer 1: Interpolated Thermal Heatmap Overlay -->
                             <canvas id="windyHeatmapCanvas" class="windy-heatmap-overlay"></canvas>
-                            <!-- Canvas Layer 2: Animated White Particle Wind Vectors -->
+                            <!-- Canvas Layer 2: Animated Streamline Wind Vector Particles -->
                             <canvas id="windyCanvas" class="windy-canvas-overlay"></canvas>
 
-                            <!-- Floating Badges -->
-                            <div class="windy-badge-topright" id="windyLayerBadge">Wind ↗</div>
-                            <div class="windy-badge-botleft">Surface</div>
+                            <!-- Loading Spinner Indicator -->
+                            <div id="weatherMapSpinner" class="weather-spinner-overlay hidden">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i> <span>Loading Grid Telemetry...</span>
+                            </div>
 
-                            <!-- Central Floating Timestamp Box (Center Screenshot) -->
-                            <div class="windy-time-box" id="windyTimeBox">12:00</div>
+                            <!-- Hover Telemetry Cursor Tooltip -->
+                            <div id="weatherHoverTooltip" class="weather-hover-tooltip hidden"></div>
 
-                            <!-- Bottom Scrubber & Timeline Bar (Center Screenshot) -->
-                            <div class="windy-bottom-scrubber-bar">
-                                <button class="windy-play-circle" id="windyPlayBtn" onclick="toggleWindyTimelinePlay()">
+                            <!-- Toast Warning Notification -->
+                            <div id="weatherToast" class="weather-toast hidden">
+                                <i class="fa-solid fa-triangle-exclamation"></i> <span id="weatherToastText">Weather data unavailable, showing cached telemetry</span>
+                            </div>
+
+                            <!-- Right-Side Glass Layer Switcher Bar -->
+                            <div class="windy-side-switcher glass-card" id="windyLayerSwitcher">
+                                <div class="switcher-title" data-i18n="weather.layersTitle">Layers</div>
+                                <button class="layer-btn active" data-layer="wind" onclick="setWindyLayer('wind')" title="Wind Speed & Streamlines">
+                                    <i class="fa-solid fa-wind"></i> <span data-i18n="weather.layerWind">Wind</span>
+                                </button>
+                                <button class="layer-btn" data-layer="temp" onclick="setWindyLayer('temp')" title="Temperature">
+                                    <i class="fa-solid fa-temperature-high"></i> <span data-i18n="weather.layerTemp">Temp</span>
+                                </button>
+                                <button class="layer-btn" data-layer="rain" onclick="setWindyLayer('rain')" title="Rain & Radar">
+                                    <i class="fa-solid fa-cloud-showers-heavy"></i> <span data-i18n="weather.layerRain">Rain</span>
+                                </button>
+                                <button class="layer-btn" data-layer="clouds" onclick="setWindyLayer('clouds')" title="Cloud Cover">
+                                    <i class="fa-solid fa-cloud"></i> <span data-i18n="weather.layerClouds">Clouds</span>
+                                </button>
+                                <button class="layer-btn" data-layer="pressure" onclick="setWindyLayer('pressure')" title="Pressure MSL">
+                                    <i class="fa-solid fa-gauge-high"></i> <span data-i18n="weather.layerPressure">Pressure</span>
+                                </button>
+                                <button class="layer-btn" data-layer="humidity" onclick="setWindyLayer('humidity')" title="Relative Humidity">
+                                    <i class="fa-solid fa-droplet"></i> <span data-i18n="weather.layerHumidity">Humidity</span>
+                                </button>
+                                
+                                <div class="particles-toggle-row">
+                                    <label class="switch-lbl">
+                                        <input type="checkbox" id="chkParticleStreamlines" checked onchange="toggleParticlesVisible(this.checked)">
+                                        <span data-i18n="weather.windVectors">Wind Vectors</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Active Layer Color Legend Bar (Bottom Edge) -->
+                            <div class="windy-legend-bar glass-card" id="windyLegendBar">
+                                <div class="legend-header">
+                                    <span id="legendTitle">Wind Speed</span>
+                                    <strong id="legendUnit">km/h</strong>
+                                </div>
+                                <div class="legend-color-strip" id="legendColorStrip"></div>
+                                <div class="legend-ticks" id="legendTicks">
+                                    <!-- Dynamic ticks injected via JS -->
+                                </div>
+                            </div>
+
+                            <!-- Bottom 72-Hour Scrubber Bar -->
+                            <div class="windy-bottom-timebar glass-card">
+                                <button class="windy-play-circle" id="windyPlayBtn" onclick="toggleWindyTimelinePlay()" title="Play/Pause Timeline">
                                     <i class="fa-solid fa-play"></i>
                                 </button>
-                                <div class="windy-timeline-flex">
-                                    <input type="range" min="0" max="4" value="0" step="1" id="windyTimelineScrubber" oninput="onWindyTimelineScrub(this.value)">
-                                    <div class="windy-days-row">
-                                        <span class="w-day-pill active" onclick="onWindyTimelineScrub(0)">Monday 11</span>
-                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(1)">Tuesday 12</span>
-                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(2)">Wednesday 13</span>
-                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(3)">Thursday 14</span>
-                                        <span class="w-day-pill" onclick="onWindyTimelineScrub(4)">Friday 15</span>
+                                <div class="timebar-slider-container">
+                                    <input type="range" min="0" max="71" value="0" step="1" id="windyTimelineScrubber" oninput="onWindyTimelineScrub(this.value)">
+                                    <div class="timebar-labels-row" id="timebarLabelsRow">
+                                        <!-- Injected by JS -->
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- Bottom Signature Color Scale Unit Bar (kt 0 5 10 20 30 40 60) -->
-                            <div class="windy-kt-scale-bar">
-                                <span class="kt-title">kt</span>
-                                <span class="kt-step" style="background:#0284c7; color:#fff;">0</span>
-                                <span class="kt-step" style="background:#10b981; color:#fff;">5</span>
-                                <span class="kt-step" style="background:#84cc16; color:#000;">10</span>
-                                <span class="kt-step" style="background:#f59e0b; color:#000;">20</span>
-                                <span class="kt-step" style="background:#ef4444; color:#fff;">30</span>
-                                <span class="kt-step" style="background:#a855f7; color:#fff;">40</span>
-                                <span class="kt-step" style="background:#d946ef; color:#fff;">60</span>
+                                <div class="time-badge" id="windyHourBadge">Wed 14:00 (+0h)</div>
                             </div>
                         </div>
 
-                        <!-- Right Slide-out Red Menu Drawer (Right Screenshot) -->
-                        <div class="windy-menu-drawer" id="windyMenuDrawer">
-                            <div class="drawer-header-red">
-                                <button class="btn-drawer-back" onclick="toggleWindyMenuDrawer()">
-                                    <i class="fa-solid fa-arrow-left"></i>
-                                </button>
-                                <h2>Menu</h2>
+                        <!-- Point Click Weather Side Drawer / Popup -->
+                        <div class="point-weather-drawer glass-card hidden" id="pointWeatherDrawer">
+                            <div class="drawer-header flex-between">
+                                <div>
+                                    <h3 id="ptLocationName">Thanjavur, Tamil Nadu</h3>
+                                    <small id="ptCoords" class="text-secondary">10.7870° N, 79.1378° E</small>
+                                </div>
+                                <button class="btn-close-drawer" onclick="closePointWeatherDrawer()"><i class="fa-solid fa-xmark"></i></button>
                             </div>
+
                             <div class="drawer-body">
-                                <ul class="drawer-nav-list">
-                                    <li onclick="openAuthModal('login')">
-                                        <i class="fa-solid fa-right-to-bracket"></i> <span>Login / Register</span>
-                                    </li>
-                                    <li onclick="showSection('profile')">
-                                        <i class="fa-solid fa-gear"></i> <span>Settings</span>
-                                    </li>
-                                    <li onclick="locateUserDistrict()">
-                                        <i class="fa-solid fa-location-crosshairs"></i> <span>Find my location</span>
-                                    </li>
-                                </ul>
-
-                                <div class="drawer-section-title">Display on map</div>
-                                <div class="display-map-grid">
-                                    <button class="d-icon-btn active" data-layer="wind" onclick="setWindyLayer('wind')" title="Wind">
-                                        <i class="fa-solid fa-wind"></i>
-                                    </button>
-                                    <button class="d-icon-btn" data-layer="temp" onclick="setWindyLayer('temp')" title="Temperature">
-                                        <i class="fa-solid fa-temperature-high"></i>
-                                    </button>
-                                    <button class="d-icon-btn" data-layer="rain" onclick="setWindyLayer('rain')" title="Rain & Radar">
-                                        <i class="fa-solid fa-cloud-showers-heavy"></i>
-                                    </button>
-                                    <button class="d-icon-btn" data-layer="clouds" onclick="setWindyLayer('clouds')" title="Clouds">
-                                        <i class="fa-solid fa-cloud"></i>
-                                    </button>
-                                    <button class="d-icon-btn" data-layer="satellite" onclick="setWindyLayer('satellite')" title="Satellite">
-                                        <i class="fa-solid fa-satellite"></i>
-                                    </button>
+                                <div class="pt-metrics-hero">
+                                    <div class="pt-hero-left">
+                                        <span class="pt-temp-big" id="ptTemp">31.1°C</span>
+                                        <span class="pt-feels" id="ptFeelsLike">Feels like 34.5°C</span>
+                                    </div>
+                                    <div class="pt-hero-right">
+                                        <div class="pt-wind-badge" id="ptWindBadge">
+                                            <i class="fa-solid fa-location-arrow wind-arrow" id="ptWindArrow"></i>
+                                            <span id="ptWindVal">14.5 km/h</span>
+                                        </div>
+                                        <small id="ptGusts">Gusts: 21.0 km/h</small>
+                                    </div>
                                 </div>
 
-                                <div class="drawer-section-title">Forecast model</div>
-                                <div class="forecast-model-selector">
-                                    <button class="model-pill" onclick="setModel('NAM')">NAM 3km</button>
-                                    <button class="model-pill active" onclick="setModel('ECMWF')">ECMWF 9km</button>
-                                    <button class="model-pill" onclick="setModel('GFS')">GFS 22km</button>
+                                <div class="pt-metrics-grid mt-3">
+                                    <div class="pt-m-card"><i class="fa-solid fa-cloud-rain text-info"></i><span>Rain Prob:</span><strong id="ptRainProb">15%</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-droplet text-primary"></i><span>Precipitation:</span><strong id="ptRainSum">0.0 mm</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-water text-cyan"></i><span>Humidity:</span><strong id="ptHumidity">68%</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-cloud text-secondary"></i><span>Cloud Cover:</span><strong id="ptClouds">25%</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-gauge-high text-warning"></i><span>Pressure MSL:</span><strong id="ptPressure">1012.4 hPa</strong></div>
                                 </div>
 
-                                <div class="drawer-section-title">Click to change units</div>
-                                <div class="windy-kt-scale-bar menu-scale">
-                                    <span class="kt-title">kt</span>
-                                    <span class="kt-step" style="background:#0284c7; color:#fff;">0</span>
-                                    <span class="kt-step" style="background:#10b981; color:#fff;">5</span>
-                                    <span class="kt-step" style="background:#84cc16; color:#000;">10</span>
-                                    <span class="kt-step" style="background:#f59e0b; color:#000;">20</span>
-                                    <span class="kt-step" style="background:#ef4444; color:#fff;">30</span>
-                                    <span class="kt-step" style="background:#a855f7; color:#fff;">40</span>
-                                    <span class="kt-step" style="background:#d946ef; color:#fff;">60</span>
+                                <!-- 24-Hour Hourly Timeline Strip -->
+                                <div class="pt-section-title mt-4" data-i18n="weather.hourlyTitle">24-Hour Hourly Forecast</div>
+                                <div class="pt-hourly-scroll" id="ptHourlyScroll">
+                                    <!-- Injected by JS -->
                                 </div>
-                            </div>
-                        </div>
 
-                        <!-- Bottom Mobile Navigation Bar (Matching Screenshot) -->
-                        <div class="windy-mobile-bottom-nav">
-                            <div class="m-nav-tab" onclick="showSection('landing')">
-                                <i class="fa-solid fa-house"></i>
-                                <span>Home</span>
-                            </div>
-                            <div class="m-nav-tab active" onclick="showSection('weather')">
-                                <i class="fa-solid fa-globe"></i>
-                                <span>Map</span>
-                            </div>
-                            <div class="m-nav-tab" onclick="showSection('advisory')">
-                                <i class="fa-solid fa-magnifying-glass"></i>
-                                <span>Search</span>
-                            </div>
-                            <div class="m-nav-tab" onclick="showSection('history')">
-                                <i class="fa-solid fa-star"></i>
-                                <span>Favorites</span>
-                            </div>
-                            <div class="m-nav-tab" onclick="toggleWindyMenuDrawer()">
-                                <i class="fa-solid fa-ellipsis"></i>
-                                <span>Menu</span>
+                                <!-- 5-Day Daily Forecast List -->
+                                <div class="pt-section-title mt-4" data-i18n="weather.dailyTitle">5-Day Forecast</div>
+                                <div class="pt-daily-list" id="ptDailyList">
+                                    <!-- Injected by JS -->
+                                </div>
                             </div>
                         </div>
 
                     </div>
                 </section>
+
+                <!-- Farm Weather Advisory Notes Modal -->
+                <div class="modal-backdrop" id="farmAdviceModal">
+                    <div class="modal-card glass-card">
+                        <div class="modal-header">
+                            <h3><i class="fa-solid fa-tractor text-warning"></i> <span data-i18n="weather.farmAdviceModalTitle">Weather Advisory for My Farm</span></h3>
+                            <button class="btn-close-modal" onclick="closeFarmAdviceModal()"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body" id="farmAdviceModalBody">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                </div>
 
                 <!-- SECTION 7: RISK ALERTS -->
                 <section id="section-alerts" class="content-section">

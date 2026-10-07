@@ -129,14 +129,27 @@
     "viewReport": "पूर्ण रिपोर्ट"
   },
   "weather": {
-    "title": "लाइव मौसम टेलीमेट्री (Open-Meteo)",
-    "subtitle": "Open-Meteo एकीकरण का उपयोग करके जिला-वार तापमान, आर्द्रता, वर्षा संभावना और हवा की गति प्रदर्शित करता है।",
-    "highlightedNote": "🌟 आपका गृह जिला ({district}) मानचित्र पर हाइलाइट किया गया है!",
+    "title": "लाइव मौसम स्टूडियो",
+    "subtitle": "हवा के प्रवाह, वर्षा राडार, तापमान, बादल और 72-घंटे के पूर्वानुमान का इंटरैक्टिव मानचित्र।",
+    "highlightedNote": "🌟 आपका खेत स्थान ({district}) मानचित्र पर चिह्नित किया गया है!",
     "temp": "वर्तमान तापमान",
     "humidity": "आर्द्रता",
     "rainProb": "वर्षा की संभावना",
     "wind": "हवा की गति",
-    "forecastTitle": "5-दिवसीय मौसम पूर्वानुमान"
+    "forecastTitle": "5-दिवसीय मौसम पूर्वानुमान",
+    "myLocation": "मेरा स्थान",
+    "farmAdvice": "खेत सलाह",
+    "layersTitle": "परतें",
+    "layerWind": "हवा",
+    "layerTemp": "तापमान",
+    "layerRain": "वर्षा",
+    "layerClouds": "बादल",
+    "layerPressure": "दबाव",
+    "layerHumidity": "आर्द्रता",
+    "windVectors": "हवा की दिशाएं",
+    "hourlyTitle": "24-घंटे का पूर्वानुमान",
+    "dailyTitle": "5-दिवसीय पूर्वानुमान",
+    "farmAdviceModalTitle": "मेरे खेत के लिए मौसम सलाह"
   },
   "water": {
     "title": "नहर जल आवंटन सिमुलेशन",
