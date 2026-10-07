@@ -287,6 +287,8 @@ public class CropAdvisoryApp {
                     handleGetAlerts(exchange);
                 } else if (path.equals("/api/weather") && method.equals("GET")) {
                     handleGetWeather(exchange);
+                } else if (path.equals("/api/crops") && method.equals("GET")) {
+                    handleGetCrops(exchange);
                 } else {
                     // Protected Endpoints requiring Token Verification
                     SessionInfo session = authenticate(exchange);
@@ -1960,37 +1962,50 @@ class CropService {
             users.put(demo.getId(), demo);
         }
 
-        // Seed 10 Tamil Nadu Crops
-        if (cropCatalog.isEmpty()) {
-            addCropInternal(new FoodCrop("Paddy", Arrays.asList(Cultivable.SoilType.CLAY, Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.HIGH, 24.0, 50.0, 30.0, 20.0, "Cereal Grain", 2300.0, 3000.0, 8000.0));
+        // Seed 18 Major Tamil Nadu Crops (Ensures missing crops are always populated)
+        List<Crop> defaultCrops = Arrays.asList(
+            new FoodCrop("Paddy", Arrays.asList(Cultivable.SoilType.CLAY, Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.HIGH, 24.0, 50.0, 30.0, 20.0, "Cereal Grain", 2300.0, 3000.0, 8000.0),
+            new CashCrop("Sugarcane", Arrays.asList(Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY, Cultivable.SoilType.CLAY),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.HIGH, 400.0, 70.0, 35.0, 30.0, "Sugar Industry", 315.0, 5500.0, 12000.0),
+            new CashCrop("Cotton", Arrays.asList(Cultivable.SoilType.BLACK, Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 11.0, 45.0, 25.0, 15.0, "Textile Fiber", 7120.0, 4500.0, 7000.0),
+            new CashCrop("Groundnut", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.SANDY, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.LOW, 10.0, 15.0, 30.0, 20.0, "Oilseed Industry", 6780.0, 5000.0, 5500.0),
+            new FoodCrop("Banana", Arrays.asList(Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY, Cultivable.SoilType.RED),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.HIGH, 350.0, 60.0, 40.0, 35.0, "Horticulture Fruit", 1800.0, 8000.0, 14000.0),
+            new CashCrop("Turmeric", Arrays.asList(Cultivable.SoilType.LOAMY, Cultivable.SoilType.RED, Cultivable.SoilType.ALLUVIAL),
+                    Cultivable.Season.SPRING, Cultivable.WaterLevel.MEDIUM, 25.0, 40.0, 30.0, 25.0, "Spice Industry", 12500.0, 9000.0, 10000.0),
+            new CashCrop("Coconut", Arrays.asList(Cultivable.SoilType.SANDY, Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY, Cultivable.SoilType.RED),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 80.0, 30.0, 20.0, 40.0, "Plantation Industry", 3000.0, 4000.0, 6000.0),
+            new FoodCrop("Tapioca", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.SANDY),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.LOW, 120.0, 35.0, 25.0, 30.0, "Tuber Crop", 950.0, 3500.0, 6000.0),
+            new FoodCrop("Mango", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.SANDY),
+                    Cultivable.Season.SPRING, Cultivable.WaterLevel.LOW, 60.0, 25.0, 20.0, 25.0, "Horticulture Fruit", 4500.0, 5000.0, 7000.0),
+            new FoodCrop("Blackgram", Arrays.asList(Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY, Cultivable.SoilType.CLAY),
+                    Cultivable.Season.SPRING, Cultivable.WaterLevel.LOW, 6.5, 10.0, 20.0, 10.0, "Pulse Crop", 7800.0, 2000.0, 3500.0),
+            new CashCrop("Chilli", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.BLACK),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 18.0, 45.0, 30.0, 25.0, "Spice Crop", 16500.0, 4500.0, 8000.0),
+            new FoodCrop("Ragi (Finger Millet)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.SANDY),
+                    Cultivable.Season.WINTER, Cultivable.WaterLevel.LOW, 12.0, 20.0, 15.0, 10.0, "Nutri-Millet", 3800.0, 1800.0, 4000.0),
+            new FoodCrop("Sorghum (Cholam)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.BLACK),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.LOW, 14.0, 25.0, 18.0, 12.0, "Nutri-Cereal", 2900.0, 1600.0, 3800.0),
+            new FoodCrop("Maize", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.BLACK),
+                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 22.0, 55.0, 35.0, 20.0, "Coarse Cereal", 2225.0, 2800.0, 5000.0),
+            new FoodCrop("Kudiraivali (Millet)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.SANDY, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.WINTER, Cultivable.WaterLevel.LOW, 8.0, 10.0, 10.0, 5.0, "Small Millet", 4500.0, 1500.0, 3500.0),
+            new FoodCrop("Watermelon", Arrays.asList(Cultivable.SoilType.SANDY, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.SPRING, Cultivable.WaterLevel.LOW, 150.0, 40.0, 20.0, 30.0, "Horticulture Fruit", 1200.0, 6000.0, 5000.0),
+            new CashCrop("Jasmine (Malligai)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.SPRING, Cultivable.WaterLevel.MEDIUM, 30.0, 35.0, 25.0, 30.0, "Floriculture", 25000.0, 8000.0, 15000.0),
+            new CashCrop("Sesame (Gingelly)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.SANDY, Cultivable.SoilType.LOAMY),
+                    Cultivable.Season.SPRING, Cultivable.WaterLevel.LOW, 4.5, 12.0, 15.0, 10.0, "Oilseed Crop", 11500.0, 1500.0, 3000.0)
+        );
 
-            addCropInternal(new CashCrop("Sugarcane", Arrays.asList(Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY, Cultivable.SoilType.CLAY),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.HIGH, 400.0, 70.0, 35.0, 30.0, "Sugar Industry", 315.0, 5500.0, 12000.0));
-
-            addCropInternal(new CashCrop("Cotton", Arrays.asList(Cultivable.SoilType.BLACK, Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 11.0, 45.0, 25.0, 15.0, "Textile Fiber", 7120.0, 4500.0, 7000.0));
-
-            addCropInternal(new CashCrop("Groundnut", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.SANDY, Cultivable.SoilType.LOAMY),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.LOW, 10.0, 15.0, 30.0, 20.0, "Oilseed Industry", 6780.0, 5000.0, 5500.0));
-
-            addCropInternal(new FoodCrop("Banana", Arrays.asList(Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.HIGH, 350.0, 60.0, 40.0, 35.0, "Horticulture Fruit", 1800.0, 8000.0, 14000.0));
-
-            addCropInternal(new CashCrop("Turmeric", Arrays.asList(Cultivable.SoilType.LOAMY, Cultivable.SoilType.RED, Cultivable.SoilType.ALLUVIAL),
-                    Cultivable.Season.SPRING, Cultivable.WaterLevel.MEDIUM, 25.0, 40.0, 30.0, 25.0, "Spice Industry", 12500.0, 9000.0, 10000.0));
-
-            addCropInternal(new FoodCrop("Ragi (Finger Millet)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.SANDY),
-                    Cultivable.Season.WINTER, Cultivable.WaterLevel.LOW, 12.0, 20.0, 15.0, 10.0, "Nutri-Millet", 3800.0, 1800.0, 4000.0));
-
-            addCropInternal(new FoodCrop("Maize", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.LOAMY, Cultivable.SoilType.BLACK),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 22.0, 55.0, 35.0, 20.0, "Coarse Cereal", 2225.0, 2800.0, 5000.0));
-
-            addCropInternal(new CashCrop("Coconut", Arrays.asList(Cultivable.SoilType.SANDY, Cultivable.SoilType.ALLUVIAL, Cultivable.SoilType.LOAMY),
-                    Cultivable.Season.SUMMER, Cultivable.WaterLevel.MEDIUM, 80.0, 30.0, 20.0, 40.0, "Plantation Industry", 3000.0, 4000.0, 6000.0));
-
-            addCropInternal(new FoodCrop("Kudiraivali (Millet)", Arrays.asList(Cultivable.SoilType.RED, Cultivable.SoilType.SANDY, Cultivable.SoilType.LOAMY),
-                    Cultivable.Season.WINTER, Cultivable.WaterLevel.LOW, 8.0, 10.0, 10.0, 5.0, "Small Millet", 4500.0, 1500.0, 3500.0));
+        for (Crop c : defaultCrops) {
+            if (!cropCatalog.containsKey(c.getName())) {
+                addCropInternal(c);
+            }
         }
 
         // Seed Demo Farmer linked to demo user

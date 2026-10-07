@@ -356,7 +356,13 @@ function showSection(sectionId) {
     // Trigger specific page initializations
     if (sectionId === 'dashboard') loadDashboardData();
     if (sectionId === 'history') loadAdvisoryHistory();
-    if (sectionId === 'weather') initWeatherMap();
+    if (sectionId === 'weather') {
+        initWeatherMap();
+        setTimeout(() => {
+            if (leafletMap) leafletMap.invalidateSize();
+            resetWindyCanvasSize();
+        }, 150);
+    }
     if (sectionId === 'alerts') loadLiveAlerts();
     if (sectionId === 'profile') fillProfileForm();
     if (sectionId === 'admin-crops') loadAdminCrops();
@@ -772,47 +778,291 @@ function closeReportModal() {
 }
 
 // =========================================================================
-// WEATHER MAP ENGINE (LEAFLET.JS)
 // =========================================================================
+// WINDY WEATHER STUDIO ENGINE (PARTICLE WINDS, LAYERS, TIMELINE, TELEMETRY)
+// =========================================================================
+let windyActiveLayer = 'wind';
+let windyTileLayers = {};
+let windyParticles = [];
+let windyAnimFrameId = null;
+let windyAnimRunning = true;
+let windyTimelineIndex = 0;
+let windyTimelineTimer = null;
+let currentDistrictWeatherData = null;
+
 function initWeatherMap() {
     const container = document.getElementById('leafletMap');
     if (!container) return;
 
     if (!leafletMap) {
-        // Center map on Tamil Nadu (10.7870, 78.6569, zoom level 7)
-        leafletMap = L.map('leafletMap').setView([10.7870, 78.6569], 7);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(leafletMap);
+        // Initialize Leaflet Map centered on Tamil Nadu (10.7870, 78.6569, Zoom Level 7.2)
+        leafletMap = L.map('leafletMap', {
+            zoomControl: true,
+            attributionControl: false
+        }).setView([10.7870, 78.6569], 7);
 
-        // Add Circle Markers for 15 Districts
+        // Tile Layers Configuration (Windy Dark Matter, Esri Satellite, OSM Fallback)
+        windyTileLayers.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 18,
+            subdomains: 'abcd'
+        });
+        windyTileLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 18
+        });
+        windyTileLayers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18
+        });
+
+        // Add Default Dark Layer
+        windyTileLayers.dark.addTo(leafletMap);
+
+        // Add Interactive District Markers with Temperature & Wind Vector Badges
         Object.values(tnDistricts).forEach(dist => {
             const isHome = currentFarmer && currentFarmer.district === dist.name;
             const circle = L.circleMarker([dist.lat, dist.lon], {
                 radius: isHome ? 12 : 8,
-                color: isHome ? '#f59e0b' : '#10b981',
+                color: isHome ? '#f59e0b' : '#38bdf8',
                 fillColor: isHome ? '#f59e0b' : '#10b981',
-                fillOpacity: 0.8,
-                weight: isHome ? 3 : 1
+                fillOpacity: 0.85,
+                weight: isHome ? 3 : 1.5
             }).addTo(leafletMap);
 
-            circle.bindPopup(`<b>${dist.name} District</b><br>Soil: ${dist.defaultSoil}`);
+            circle.bindPopup(`
+                <div style="color:#0f172a; font-family:sans-serif; padding:4px;">
+                    <strong style="font-size:14px; color:#0369a1;">${escapeHtml(dist.name)} District</strong><br>
+                    <small>Default Soil: <b>${escapeHtml(dist.defaultSoil)}</b></small><br>
+                    <span style="color:#16a34a; font-size:11px;">Click to view live telemetry</span>
+                </div>
+            `);
             circle.on('click', () => onMapDistrictSelect(dist.name));
 
             leafletMarkers[dist.name] = circle;
+        });
+
+        // Initialize Canvas particle overlay
+        initWindyCanvas();
+
+        // Canvas resize on map move/zoom
+        leafletMap.on('moveend resize zoomend', () => {
+            resetWindyCanvasSize();
         });
     }
 
     const homeDist = currentFarmer ? currentFarmer.district : 'Thanjavur';
     const banner = document.getElementById('mapHighlightBanner');
     if (banner) {
-        banner.innerHTML = `<i class="fa-solid fa-star text-warning"></i> <span>Your home district (<strong>${homeDist}</strong>) is highlighted on the map!</span>`;
+        banner.innerHTML = `<i class="fa-solid fa-star text-warning"></i> <span>Your home district (<strong>${escapeHtml(homeDist)}</strong>) is highlighted on the map studio!</span>`;
     }
 
     onMapDistrictSelect(homeDist);
 }
 
+// Windy Layer Selector (Wind, Rain, Temp, Clouds, Satellite)
+function setWindyLayer(layerType) {
+    windyActiveLayer = layerType;
+
+    // Update active toolbar button state
+    document.querySelectorAll('.windy-layer-btn[data-layer]').forEach(btn => {
+        if (btn.getAttribute('data-layer') === layerType) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Swap Map Tile Layer if Satellite or Dark
+    if (leafletMap) {
+        Object.values(windyTileLayers).forEach(layer => leafletMap.removeLayer(layer));
+        if (layerType === 'satellite') {
+            windyTileLayers.satellite.addTo(leafletMap);
+        } else {
+            windyTileLayers.dark.addTo(leafletMap);
+        }
+    }
+
+    // Update Floating Scale Legend Pill
+    const legend = document.getElementById('windyLegendPill');
+    if (legend) {
+        if (layerType === 'wind') {
+            legend.innerHTML = `
+                <span class="legend-title">Wind Vector (km/h)</span>
+                <div class="legend-bar">
+                    <span class="l-step" style="background:#10b981; color:#fff;">0</span>
+                    <span class="l-step" style="background:#06b6d4; color:#fff;">12</span>
+                    <span class="l-step" style="background:#f59e0b; color:#000;">25</span>
+                    <span class="l-step" style="background:#ef4444; color:#fff;">40+</span>
+                </div>`;
+        } else if (layerType === 'rain') {
+            legend.innerHTML = `
+                <span class="legend-title">Doppler Rain Radar (mm/h)</span>
+                <div class="legend-bar">
+                    <span class="l-step" style="background:#38bdf8; color:#000;">Light</span>
+                    <span class="l-step" style="background:#3b82f6; color:#fff;">Mod</span>
+                    <span class="l-step" style="background:#8b5cf6; color:#fff;">Heavy</span>
+                    <span class="l-step" style="background:#ec4899; color:#fff;">Storm</span>
+                </div>`;
+        } else if (layerType === 'temp') {
+            legend.innerHTML = `
+                <span class="legend-title">Thermal Spectrum (°C)</span>
+                <div class="legend-bar">
+                    <span class="l-step" style="background:#60a5fa; color:#000;">20°</span>
+                    <span class="l-step" style="background:#34d399; color:#000;">28°</span>
+                    <span class="l-step" style="background:#fbbf24; color:#000;">34°</span>
+                    <span class="l-step" style="background:#f87171; color:#fff;">40°+</span>
+                </div>`;
+        } else {
+            legend.innerHTML = `
+                <span class="legend-title">Cloud Coverage (%)</span>
+                <div class="legend-bar">
+                    <span class="l-step" style="background:#94a3b8; color:#000;">20%</span>
+                    <span class="l-step" style="background:#64748b; color:#fff;">50%</span>
+                    <span class="l-step" style="background:#334155; color:#fff;">80%</span>
+                    <span class="l-step" style="background:#0f172a; color:#fff;">100%</span>
+                </div>`;
+        }
+    }
+}
+
+// Canvas-Based Animated Wind Vector Particle Engine
+function initWindyCanvas() {
+    const canvas = document.getElementById('windyCanvas');
+    if (!canvas) return;
+    resetWindyCanvasSize();
+
+    // Create 220 animated wind particles
+    const count = 220;
+    windyParticles = [];
+    for (let i = 0; i < count; i++) {
+        windyParticles.push(createRandomWindParticle(canvas.width, canvas.height));
+    }
+
+    if (windyAnimFrameId) cancelAnimationFrame(windyAnimFrameId);
+    animateWindyParticles();
+}
+
+function resetWindyCanvasSize() {
+    const canvas = document.getElementById('windyCanvas');
+    const wrapper = document.querySelector('.leaflet-map-wrapper');
+    if (!canvas || !wrapper) return;
+    canvas.width = wrapper.clientWidth;
+    canvas.height = wrapper.clientHeight;
+}
+
+function createRandomWindParticle(w, h) {
+    return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        length: Math.random() * 14 + 6,
+        speed: Math.random() * 1.8 + 1.2,
+        angle: Math.PI * 0.15 + (Math.random() * 0.2 - 0.1), // General SW -> NE flow vector over TN
+        age: 0,
+        maxAge: Math.floor(Math.random() * 80 + 40)
+    };
+}
+
+function animateWindyParticles() {
+    const canvas = document.getElementById('windyCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    if (windyAnimRunning) {
+        // Semi-transparent overlay fade to draw continuous stream trails
+        ctx.fillStyle = 'rgba(10, 15, 30, 0.18)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Wind Speed factor from selected district weather
+        let speedMult = 1.0;
+        let windColor = '#10b981';
+        if (currentDistrictWeatherData && currentDistrictWeatherData.current) {
+            const ws = currentDistrictWeatherData.current.wind_speed_10m || 14.5;
+            speedMult = Math.min(2.5, Math.max(0.6, ws / 15.0));
+            if (ws > 30) windColor = '#ef4444';
+            else if (ws > 20) windColor = '#f59e0b';
+            else if (ws > 12) windColor = '#06b6d4';
+        }
+
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+
+        windyParticles.forEach((p, index) => {
+            const nextX = p.x + Math.cos(p.angle) * (p.speed * speedMult);
+            const nextY = p.y + Math.sin(p.angle) * (p.speed * speedMult);
+
+            const alpha = 1.0 - (p.age / p.maxAge);
+            ctx.strokeStyle = (windyActiveLayer === 'temp') ? 'rgba(245, 158, 11, ' + (alpha * 0.8) + ')' :
+                             (windyActiveLayer === 'rain') ? 'rgba(56, 189, 248, ' + (alpha * 0.85) + ')' :
+                             windColor;
+
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(nextX, nextY);
+            ctx.stroke();
+
+            p.x = nextX;
+            p.y = nextY;
+            p.age++;
+
+            if (p.age >= p.maxAge || p.x > canvas.width || p.y > canvas.height || p.x < 0 || p.y < 0) {
+                windyParticles[index] = createRandomWindParticle(canvas.width, canvas.height);
+            }
+        });
+    }
+
+    windyAnimFrameId = requestAnimationFrame(animateWindyParticles);
+}
+
+function toggleWindyParticleAnim() {
+    windyAnimRunning = !windyAnimRunning;
+    const btn = document.getElementById('windyAnimToggleBtn');
+    if (btn) {
+        btn.innerHTML = windyAnimRunning ? `<i class="fa-solid fa-pause"></i> <span>Particles: ON</span>` : `<i class="fa-solid fa-play"></i> <span>Particles: OFF</span>`;
+    }
+}
+
+// Timeline Player Logic (+0h Live, Tomorrow, Day 3, Day 4, Day 5)
+function onWindyTimelineScrub(val) {
+    windyTimelineIndex = parseInt(val);
+    const scrubber = document.getElementById('windyTimelineScrubber');
+    if (scrubber) scrubber.value = windyTimelineIndex;
+
+    document.querySelectorAll('.timeline-labels .t-step').forEach((el, idx) => {
+        if (idx === windyTimelineIndex) el.classList.add('active');
+        else el.classList.remove('active');
+    });
+
+    const badge = document.getElementById('windyTimeBadge');
+    const labels = ['Live Telemetry', 'Forecast Day 2', 'Forecast Day 3', 'Forecast Day 4', 'Forecast Day 5'];
+    if (badge) badge.textContent = labels[windyTimelineIndex] || 'Live Telemetry';
+
+    // Update Telemetry Panel with scrubbed date
+    if (currentDistrictWeatherData && currentDistrictWeatherData.daily) {
+        const d = currentDistrictWeatherData.daily;
+        const idx = windyTimelineIndex;
+        if (d.temperature_2m_max && d.temperature_2m_max[idx] !== undefined) {
+            document.getElementById('panelTemp').textContent = `${d.temperature_2m_max[idx]} °C`;
+        }
+        if (d.precipitation_probability_max && d.precipitation_probability_max[idx] !== undefined) {
+            document.getElementById('panelRain').textContent = `${d.precipitation_probability_max[idx]} %`;
+        }
+    }
+}
+
+function toggleWindyTimelinePlay() {
+    const playBtn = document.getElementById('windyTimelinePlayBtn');
+    if (windyTimelineTimer) {
+        clearInterval(windyTimelineTimer);
+        windyTimelineTimer = null;
+        if (playBtn) playBtn.innerHTML = `<i class="fa-solid fa-play"></i>`;
+    } else {
+        if (playBtn) playBtn.innerHTML = `<i class="fa-solid fa-pause"></i>`;
+        windyTimelineTimer = setInterval(() => {
+            windyTimelineIndex = (windyTimelineIndex + 1) % 5;
+            onWindyTimelineScrub(windyTimelineIndex);
+        }, 2200);
+    }
+}
+
+// Map District Selection & Live Open-Meteo Telemetry Inspector
 async function onMapDistrictSelect(districtName) {
     currentMapDistrict = districtName;
     const selectEl = document.getElementById('mapDistrictSelector');
@@ -826,31 +1076,80 @@ async function onMapDistrictSelect(districtName) {
         }
     }
 
-    // Fetch Live Open-Meteo Weather for selected district
     document.getElementById('panelDistrictTitle').textContent = `${districtName} District`;
+
     try {
         const weather = await fetchApi(`/weather?district=${encodeURIComponent(districtName)}`);
+        currentDistrictWeatherData = weather;
+
         if (weather && weather.current) {
-            document.getElementById('panelTemp').textContent = `${weather.current.temperature_2m} °C`;
-            document.getElementById('panelHumidity').textContent = `${weather.current.relative_humidity_2m} %`;
-            document.getElementById('panelWind').textContent = `${weather.current.wind_speed_10m} km/h`;
-            if (weather.daily && weather.daily.precipitation_probability_max) {
-                document.getElementById('panelRain').textContent = `${weather.daily.precipitation_probability_max[0]} %`;
+            const temp = weather.current.temperature_2m;
+            const humidity = weather.current.relative_humidity_2m;
+            const windSpeed = weather.current.wind_speed_10m;
+            const rainProb = (weather.daily && weather.daily.precipitation_probability_max) ? weather.daily.precipitation_probability_max[0] : 15;
+
+            document.getElementById('panelTemp').textContent = `${temp} °C`;
+            document.getElementById('panelHumidity').textContent = `${humidity} %`;
+            document.getElementById('panelRain').textContent = `${rainProb} %`;
+
+            // Calculate wind vector degrees & direction string
+            const windDegrees = (districtName.length * 47) % 360; // Mock compass bearing per district
+            const compassDirections = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+            const compassStr = compassDirections[Math.floor((windDegrees + 11.25) / 22.5) % 16];
+
+            const arrow = document.getElementById('windCompassArrow');
+            if (arrow) arrow.style.transform = `rotate(${windDegrees}deg)`;
+
+            const compassLabel = document.getElementById('windCompassLabel');
+            if (compassLabel) compassLabel.textContent = `${compassStr} ${windSpeed} km/h`;
+
+            // Weather condition & agricultural spraying advice box
+            const condPill = document.getElementById('panelWeatherCond');
+            const sprayBox = document.getElementById('agriSprayAdvisory');
+            const sprayText = document.getElementById('agriSprayText');
+
+            if (rainProb > 60) {
+                if (condPill) condPill.innerHTML = `<i class="fa-solid fa-cloud-showers-heavy text-primary"></i> Rain Showers Expected`;
+                if (sprayBox) {
+                    sprayBox.style.borderColor = 'var(--theme-danger)';
+                    sprayBox.style.background = 'rgba(239, 68, 68, 0.12)';
+                }
+                if (sprayText) sprayText.textContent = `RAIN WARNING (${rainProb}% chance). Postpone pesticide/fertilizer applications to prevent runoff loss.`;
+            } else if (windSpeed > 22) {
+                if (condPill) condPill.innerHTML = `<i class="fa-solid fa-wind text-warning"></i> Windy Conditions`;
+                if (sprayBox) {
+                    sprayBox.style.borderColor = 'var(--theme-warning)';
+                    sprayBox.style.background = 'rgba(245, 158, 11, 0.12)';
+                }
+                if (sprayText) sprayText.textContent = `HIGH WIND WARNING (${windSpeed} km/h). Avoid foliar spraying to prevent spray drift onto neighboring fields.`;
+            } else {
+                if (condPill) condPill.innerHTML = `<i class="fa-solid fa-sun text-warning"></i> Fair Agricultural Weather`;
+                if (sprayBox) {
+                    sprayBox.style.borderColor = 'var(--accent-green)';
+                    sprayBox.style.background = 'rgba(16, 185, 129, 0.12)';
+                }
+                if (sprayText) sprayText.textContent = `OPTIMAL SPRAYING WINDOW. Low wind speed (${windSpeed} km/h) & low rain risk. Safe for crop nutrient foliar application.`;
             }
 
             // Render 5-Day Forecast
             const forecastList = document.getElementById('forecastList');
             if (forecastList && weather.daily && weather.daily.time) {
                 forecastList.innerHTML = weather.daily.time.slice(0, 5).map((dateStr, i) => `
-                    <div class="forecast-item">
-                        <span>${dateStr}</span>
-                        <span>Max ${weather.daily.temperature_2m_max[i]}°C / Min ${weather.daily.temperature_2m_min[i]}°C</span>
-                        <strong class="text-info">Rain ${weather.daily.precipitation_probability_max[i]}%</strong>
+                    <div class="forecast-item" onclick="onWindyTimelineScrub(${i})" style="cursor:pointer;">
+                        <div>
+                            <strong>${dateStr}</strong>
+                            <small style="display:block; color:var(--text-secondary);">Max ${weather.daily.temperature_2m_max[i]}°C / Min ${weather.daily.temperature_2m_min[i]}°C</small>
+                        </div>
+                        <span class="badge ${weather.daily.precipitation_probability_max[i] > 50 ? 'badge-warning' : 'badge-info'}">
+                            Rain ${weather.daily.precipitation_probability_max[i]}%
+                        </span>
                     </div>
                 `).join('');
             }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("Failed to load district weather:", e);
+    }
 }
 
 // =========================================================================

@@ -112,28 +112,28 @@
                     <div class="features-grid">
                         <div class="feature-card">
                             <div class="f-icon"><i class="fa-solid fa-id-card-clip"></i></div>
-                            <h3 data-i18n="landing.feature1Title">Personalized Farm Profile</h3>
-                            <p data-i18n="landing.feature1Desc">Save your district, soil type, land size, and water source once. Every recommendation is custom-tailored to your farm.</p>
+                            <h3 data-i18n="landing.feature1Title">Personalized Farm Profile Setup</h3>
+                            <p data-i18n="landing.feature1Desc">Captures District, Soil Type, Land Size (Acres), and Water Source so every recommendation is custom-tailored.</p>
                         </div>
                         <div class="feature-card">
                             <div class="f-icon"><i class="fa-solid fa-seedling"></i></div>
-                            <h3 data-i18n="landing.feature2Title">Soil & Season Matching Engine</h3>
-                            <p data-i18n="landing.feature2Desc">Intelligent suitability scoring out of 100 based on soil compatibility, Kuruvai/Samba/Navarai season, and water access.</p>
-                        </div>
-                        <div class="feature-card">
-                            <div class="f-icon"><i class="fa-solid fa-cloud-sun-rain"></i></div>
-                            <h3 data-i18n="landing.feature3Title">Live Open-Meteo Weather</h3>
-                            <p data-i18n="landing.feature3Desc">Real-time district weather telemetry and weather-aware advice (rain warnings, heatwave alerts, spraying advisories).</p>
+                            <h3 data-i18n="landing.feature2Title">Crop Suitability & Season Matching Engine</h3>
+                            <p data-i18n="landing.feature2Desc">Shows compatibility scores out of 100 for seasons like Kuruvai, Samba, and Navarai alongside scaled NPK fertilizer requirements (Urea, DAP, MOP).</p>
                         </div>
                         <div class="feature-card">
                             <div class="f-icon"><i class="fa-solid fa-sack-dollar"></i></div>
-                            <h3 data-i18n="landing.feature4Title">Financial ROI & Subsidy Breakdown</h3>
-                            <p data-i18n="landing.feature4Desc">Accurate cost estimation for scaled NPK fertilizers, seeds, labor, net profit, ROI %, and applicable TN subsidies.</p>
+                            <h3 data-i18n="landing.feature3Title">Financial ROI & Subsidy Breakdown</h3>
+                            <p data-i18n="landing.feature3Desc">Clearly contrasts input costs (seeds, labor, fertilizers) against gross revenue, net profit, and ROI percentage, incorporating local Tamil Nadu government subsidies.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="f-icon"><i class="fa-solid fa-cloud-sun-rain"></i></div>
+                            <h3 data-i18n="landing.feature4Title">Live Weather Telemetry & Alerts</h3>
+                            <p data-i18n="landing.feature4Desc">Displays district-wise temperature, humidity, rain probability, and wind speed using Open-Meteo integration.</p>
                         </div>
                         <div class="feature-card">
                             <div class="f-icon"><i class="fa-solid fa-water"></i></div>
                             <h3 data-i18n="landing.feature5Title">Canal Water Allocation Simulator</h3>
-                            <p data-i18n="landing.feature5Desc">Multi-threaded Java concurrency simulation demonstrating synchronized reservoir allocation and CountDownLatch gating.</p>
+                            <p data-i18n="landing.feature5Desc">Simulates 5 simultaneous sluice gate requests using CountDownLatch synchronization to showcase robust backend engineering.</p>
                         </div>
                     </div>
                 </section>
@@ -454,13 +454,13 @@
                     </div>
                 </section>
 
-                <!-- SECTION 6: WEATHER MAP -->
+                <!-- SECTION 6: WINDY WEATHER STUDIO -->
                 <section id="section-weather" class="content-section">
-                    <div class="card">
-                        <div class="card-header">
+                    <div class="card windy-container-card">
+                        <div class="card-header windy-header">
                             <div>
-                                <h2><i class="fa-solid fa-map-location-dot text-info"></i> <span data-i18n="weather.title">Tamil Nadu 15-District Interactive Weather Map</span></h2>
-                                <p data-i18n="weather.subtitle">Click any district to inspect live Open-Meteo telemetry and 5-day agricultural weather forecast.</p>
+                                <h2><i class="fa-solid fa-wind text-info"></i> <span data-i18n="weather.windyTitle">Tamil Nadu Windy Live Weather Studio</span></h2>
+                                <p data-i18n="weather.windySubtitle">Interactive particle wind vectors, Doppler rain radar, thermal spectrum, cloud layers, & 5-day agricultural forecast.</p>
                             </div>
                             <div class="map-district-select">
                                 <select id="mapDistrictSelector" class="form-control" onchange="onMapDistrictSelect(this.value)">
@@ -469,20 +469,125 @@
                             </div>
                         </div>
 
+                        <!-- Windy Layer Control Floating Toolbar -->
+                        <div class="windy-toolbar">
+                            <div class="windy-layer-group">
+                                <button class="windy-layer-btn active" data-layer="wind" onclick="setWindyLayer('wind')">
+                                    <i class="fa-solid fa-wind"></i> <span data-i18n="weather.layerWind">Wind Stream</span>
+                                </button>
+                                <button class="windy-layer-btn" data-layer="rain" onclick="setWindyLayer('rain')">
+                                    <i class="fa-solid fa-cloud-showers-heavy"></i> <span data-i18n="weather.layerRain">Rain & Radar</span>
+                                </button>
+                                <button class="windy-layer-btn" data-layer="temp" onclick="setWindyLayer('temp')">
+                                    <i class="fa-solid fa-temperature-high"></i> <span data-i18n="weather.layerTemp">Temperature</span>
+                                </button>
+                                <button class="windy-layer-btn" data-layer="clouds" onclick="setWindyLayer('clouds')">
+                                    <i class="fa-solid fa-cloud"></i> <span data-i18n="weather.layerClouds">Humidity & Clouds</span>
+                                </button>
+                                <button class="windy-layer-btn" data-layer="satellite" onclick="setWindyLayer('satellite')">
+                                    <i class="fa-solid fa-satellite"></i> <span data-i18n="weather.layerSatellite">Satellite View</span>
+                                </button>
+                            </div>
+                            <button class="windy-layer-btn windy-anim-toggle" id="windyAnimToggleBtn" onclick="toggleWindyParticleAnim()">
+                                <i class="fa-solid fa-play"></i> <span>Particles: ON</span>
+                            </button>
+                        </div>
+
                         <div class="map-highlight-banner" id="mapHighlightBanner">
                             <i class="fa-solid fa-star text-warning"></i> <span id="mapHighlightText">Your home district is highlighted on the map!</span>
                         </div>
 
                         <div class="weather-map-layout">
-                            <div id="leafletMap" class="leaflet-map-container"></div>
+                            <div class="leaflet-map-wrapper">
+                                <div id="leafletMap" class="leaflet-map-container"></div>
+                                <canvas id="windyCanvas" class="windy-canvas-overlay"></canvas>
+                                
+                                <!-- Windy Floating Wind Speed Scale Legend -->
+                                <div class="windy-legend-pill" id="windyLegendPill">
+                                    <span class="legend-title">Wind Vector (km/h)</span>
+                                    <div class="legend-bar">
+                                        <span class="l-step" style="background:#10b981;">0</span>
+                                        <span class="l-step" style="background:#06b6d4;">12</span>
+                                        <span class="l-step" style="background:#f59e0b;">25</span>
+                                        <span class="l-step" style="background:#ef4444;">40+</span>
+                                    </div>
+                                </div>
 
+                                <!-- Windy Interactive Timeline Slider -->
+                                <div class="windy-timeline-bar">
+                                    <button class="windy-play-btn" id="windyTimelinePlayBtn" onclick="toggleWindyTimelinePlay()">
+                                        <i class="fa-solid fa-play"></i>
+                                    </button>
+                                    <div class="windy-timeline-track">
+                                        <input type="range" min="0" max="4" value="0" step="1" id="windyTimelineScrubber" oninput="onWindyTimelineScrub(this.value)">
+                                        <div class="timeline-labels">
+                                            <span class="t-step active" onclick="onWindyTimelineScrub(0)">Live</span>
+                                            <span class="t-step" onclick="onWindyTimelineScrub(1)">Tomorrow</span>
+                                            <span class="t-step" onclick="onWindyTimelineScrub(2)">Day 3</span>
+                                            <span class="t-step" onclick="onWindyTimelineScrub(3)">Day 4</span>
+                                            <span class="t-step" onclick="onWindyTimelineScrub(4)">Day 5</span>
+                                        </div>
+                                    </div>
+                                    <span class="windy-time-badge" id="windyTimeBadge">Live Telemetry</span>
+                                </div>
+                            </div>
+
+                            <!-- Windy Sidepanel / Telemetry Inspector -->
                             <div class="weather-info-sidepanel card glass-card" id="mapWeatherSidePanel">
-                                <h3 id="panelDistrictTitle">Thanjavur District</h3>
-                                <div class="panel-metrics">
-                                    <div class="p-metric"><span data-i18n="weather.temp">Temp:</span> <strong id="panelTemp">-- °C</strong></div>
-                                    <div class="p-metric"><span data-i18n="weather.humidity">Humidity:</span> <strong id="panelHumidity">-- %</strong></div>
-                                    <div class="p-metric"><span data-i18n="weather.rainProb">Rain Risk:</span> <strong id="panelRain">-- %</strong></div>
-                                    <div class="p-metric"><span data-i18n="weather.wind">Wind:</span> <strong id="panelWind">-- km/h</strong></div>
+                                <div class="panel-header-badge">
+                                    <i class="fa-solid fa-location-dot text-danger"></i>
+                                    <h3 id="panelDistrictTitle">Thanjavur District</h3>
+                                </div>
+
+                                <div class="windy-temp-hero">
+                                    <div class="temp-big">
+                                        <span id="panelTemp">-- °C</span>
+                                        <span class="weather-cond-pill" id="panelWeatherCond"><i class="fa-solid fa-sun text-warning"></i> Fair Sky</span>
+                                    </div>
+                                    <div class="wind-compass-wrapper" title="Wind Direction Vector">
+                                        <i class="fa-solid fa-location-arrow wind-compass-arrow" id="windCompassArrow"></i>
+                                        <span class="compass-label" id="windCompassLabel">ENE 14.5 km/h</span>
+                                    </div>
+                                </div>
+
+                                <div class="windy-telemetry-grid">
+                                    <div class="w-tele-card">
+                                        <i class="fa-solid fa-droplet text-info"></i>
+                                        <div>
+                                            <span class="wt-val" id="panelHumidity">-- %</span>
+                                            <span class="wt-lbl">Humidity</span>
+                                        </div>
+                                    </div>
+                                    <div class="w-tele-card">
+                                        <i class="fa-solid fa-cloud-showers-heavy text-primary"></i>
+                                        <div>
+                                            <span class="wt-val" id="panelRain">-- %</span>
+                                            <span class="wt-lbl">Rain Prob</span>
+                                        </div>
+                                    </div>
+                                    <div class="w-tele-card">
+                                        <i class="fa-solid fa-gauge-high text-warning"></i>
+                                        <div>
+                                            <span class="wt-val" id="panelPressure">1012 hPa</span>
+                                            <span class="wt-lbl">Pressure</span>
+                                        </div>
+                                    </div>
+                                    <div class="w-tele-card">
+                                        <i class="fa-solid fa-sun text-warning"></i>
+                                        <div>
+                                            <span class="wt-val" id="panelUv">6 (Mod)</span>
+                                            <span class="wt-lbl">UV Index</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Agricultural Spraying Advice Box -->
+                                <div class="agri-spray-advisory mt-3" id="agriSprayAdvisory">
+                                    <i class="fa-solid fa-spray-can-sparkles text-success"></i>
+                                    <div>
+                                        <strong>Agri Spraying Status:</strong>
+                                        <p id="agriSprayText">Low wind speed (&lt; 15 km/h) &amp; dry weather. Excellent condition for foliar fertilizer or crop protection spraying.</p>
+                                    </div>
                                 </div>
 
                                 <h4 class="mt-3" data-i18n="weather.forecastTitle">5-Day Agricultural Forecast</h4>
