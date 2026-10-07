@@ -75,6 +75,7 @@ public class CropAdvisoryApp {
         // 2. Start Weather Daemon Thread
         WeatherAlertDaemon weatherDaemon = new WeatherAlertDaemon(120000); // Check weather every 2 minutes
         weatherDaemon.start();
+        startGlobalWorldGridTask();
 
         // 3. Start HTTP Server
         int activePort = PORT;
@@ -258,6 +259,19 @@ public class CropAdvisoryApp {
         }
     }
 
+    private static void startGlobalWorldGridTask() {
+        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+            try {
+                System.out.println("[GridScheduler] Refreshing 18x36 global world weather grid in background...");
+                ApiHandler handler = new ApiHandler();
+                ApiHandler.cachedWorldGrid = handler.fetchAndBuildGrid(-60.0, -180.0, 75.0, 180.0, 18, 36);
+                System.out.println("[GridScheduler] Global world weather grid successfully cached!");
+            } catch (Exception e) {
+                System.err.println("[GridScheduler] Global grid background refresh warning: " + e.getMessage());
+            }
+        }, 0, 60, TimeUnit.MINUTES);
+    }
+
     static class ApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -287,7 +301,7 @@ public class CropAdvisoryApp {
                     handleGetAlerts(exchange);
                 } else if (path.equals("/api/weather") && method.equals("GET")) {
                     handleGetWeather(exchange);
-                } else if (path.equals("/api/weather/grid") && method.equals("GET")) {
+                } else if ((path.equals("/api/weather/grid") || path.equals("/api/wind/grid")) && method.equals("GET")) {
                     handleGetWeatherGrid(exchange);
                 } else if (path.equals("/api/weather/point") && method.equals("GET")) {
                     handleGetWeatherPoint(exchange);
@@ -628,6 +642,7 @@ public class CropAdvisoryApp {
             sendResponse(exchange, 200, json);
         }
 
+        private static volatile GridCacheEntry cachedWorldGrid = null;
         private static final Map<String, GridCacheEntry> gridCache = new ConcurrentHashMap<>();
 
         static class GridCacheEntry {
@@ -659,8 +674,8 @@ public class CropAdvisoryApp {
 
         private void handleGetWeatherGrid(HttpExchange exchange) throws IOException {
             String query = exchange.getRequestURI().getQuery();
-            double south = 8.0, west = 76.0, north = 14.0, east = 80.5;
-            int rows = 14, cols = 14, hour = 0;
+            double south = -60.0, west = -180.0, north = 75.0, east = 180.0;
+            int rows = 18, cols = 36, hour = 0;
 
             if (query != null) {
                 for (String param : query.split("&")) {
@@ -684,22 +699,30 @@ public class CropAdvisoryApp {
             if (south > north) { double tmp = south; south = north; north = tmp; }
             west = Math.max(-180.0, Math.min(180.0, west));
             east = Math.max(-180.0, Math.min(180.0, east));
-            rows = Math.max(5, Math.min(20, rows));
-            cols = Math.max(5, Math.min(20, cols));
+            rows = Math.max(5, Math.min(25, rows));
+            cols = Math.max(5, Math.min(40, cols));
             hour = Math.max(0, Math.min(71, hour));
 
-            String cacheKey = String.format(Locale.US, "grid_%.2f_%.2f_%.2f_%.2f_%d_%d",
-                    Math.round(south * 20.0) / 20.0,
-                    Math.round(west * 20.0) / 20.0,
-                    Math.round(north * 20.0) / 20.0,
-                    Math.round(east * 20.0) / 20.0,
-                    rows, cols);
+            boolean isWorldView = (south <= -45.0 && north >= 45.0 && (east - west) >= 250.0);
+            GridCacheEntry entry = null;
 
-            long now = System.currentTimeMillis();
-            GridCacheEntry entry = gridCache.get(cacheKey);
-            if (entry == null || (now - entry.timestamp) > 15 * 60 * 1000L) {
-                entry = fetchAndBuildGrid(south, west, north, east, rows, cols);
-                gridCache.put(cacheKey, entry);
+            if (isWorldView && cachedWorldGrid != null && (System.currentTimeMillis() - cachedWorldGrid.timestamp) < 60 * 60 * 1000L) {
+                entry = cachedWorldGrid;
+            } else {
+                String cacheKey = String.format(Locale.US, "grid_%.2f_%.2f_%.2f_%.2f_%d_%d",
+                        Math.round(south * 10.0) / 10.0,
+                        Math.round(west * 10.0) / 10.0,
+                        Math.round(north * 10.0) / 10.0,
+                        Math.round(east * 10.0) / 10.0,
+                        rows, cols);
+
+                long now = System.currentTimeMillis();
+                entry = gridCache.get(cacheKey);
+                if (entry == null || (now - entry.timestamp) > 20 * 60 * 1000L) {
+                    entry = fetchAndBuildGrid(south, west, north, east, rows, cols);
+                    gridCache.put(cacheKey, entry);
+                    if (isWorldView) cachedWorldGrid = entry;
+                }
             }
 
             int targetHour = Math.min(hour, entry.hours.size() - 1);

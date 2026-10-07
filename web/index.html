@@ -458,31 +458,25 @@
                 <section id="section-weather" class="content-section">
                     <div class="windy-studio-container">
                         
-                        <!-- Top Floating Studio Controls -->
+                        <!-- Top Floating Search & Action Bar -->
                         <div class="windy-studio-topbar glass-card">
                             <div class="windy-search-wrapper">
                                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                                <input type="text" id="weatherSearchInput" placeholder="Search city, village or location..." autocomplete="off" oninput="onWeatherSearchInput(this.value)">
+                                <input type="text" id="weatherSearchInput" placeholder="Search place..." autocomplete="off" oninput="onWeatherSearchInput(this.value)">
                                 <div id="searchAutocompleteResults" class="search-autocomplete-dropdown hidden"></div>
                             </div>
 
                             <div class="windy-topbar-actions">
-                                <button class="btn-studio-action" id="btnMyLocation" onclick="locateUserGeolocation()" title="My Location">
-                                    <i class="fa-solid fa-location-crosshairs"></i> <span data-i18n="weather.myLocation">My Location</span>
+                                <button class="btn-locate-me" id="btnMyLocation" onclick="locateUserGeolocation()" title="Locate Me">
+                                    <i class="fa-solid fa-location-arrow"></i>
                                 </button>
-                                <button class="btn-studio-action" id="btnFarmAdvice" onclick="openFarmAdviceModal()" title="Weather Advice for My Farm">
-                                    <i class="fa-solid fa-tractor text-warning"></i> <span data-i18n="weather.farmAdvice">Farm Advice</span>
-                                </button>
-                                <button class="btn-studio-action" id="btnToggleAlerts" onclick="toggleMapAlertsOverlay()" title="Show Weather Risk Alerts">
-                                    <i class="fa-solid fa-triangle-exclamation text-danger"></i> <span id="alertsToggleText">Alerts: Off</span>
-                                </button>
-                                <button class="btn-studio-action" id="btnBasemapTheme" onclick="toggleWindyBasemap()" title="Toggle Basemap Light/Dark">
-                                    <i class="fa-solid fa-layer-group"></i> <span id="basemapThemeText">Dark Tiles</span>
+                                <button class="btn-studio-layer-toggle" id="btnToggleLayerMenu" onclick="toggleLayerMenuDrawer()" title="Display on Map">
+                                    <i class="fa-solid fa-layer-group"></i> <span>Display on map</span>
                                 </button>
                             </div>
                         </div>
 
-                        <!-- Main Map Studio Frame -->
+                        <!-- Main Map Frame -->
                         <div class="windy-map-frame" id="windyMapFrame">
                             <div id="leafletMap" class="leaflet-map-container"></div>
                             <!-- Canvas Layer 1: Interpolated Thermal Heatmap Overlay -->
@@ -503,69 +497,67 @@
                                 <i class="fa-solid fa-triangle-exclamation"></i> <span id="weatherToastText">Weather data unavailable, showing cached telemetry</span>
                             </div>
 
-                            <!-- Right-Side Glass Layer Switcher Bar -->
+                            <!-- Right-Side Layer Drawer ("Display on map") -->
                             <div class="windy-side-switcher glass-card" id="windyLayerSwitcher">
-                                <div class="switcher-title" data-i18n="weather.layersTitle">Layers</div>
-                                <button class="layer-btn active" data-layer="wind" onclick="setWindyLayer('wind')" title="Wind Speed & Streamlines">
-                                    <i class="fa-solid fa-wind"></i> <span data-i18n="weather.layerWind">Wind</span>
+                                <div class="switcher-title">Display on map</div>
+                                <button class="layer-btn active" data-layer="wind" onclick="setWindyLayer('wind')" title="Wind Speed & Vector Streams">
+                                    <i class="fa-solid fa-wind"></i> <span>Wind</span>
                                 </button>
                                 <button class="layer-btn" data-layer="temp" onclick="setWindyLayer('temp')" title="Temperature">
-                                    <i class="fa-solid fa-temperature-high"></i> <span data-i18n="weather.layerTemp">Temp</span>
+                                    <i class="fa-solid fa-temperature-high"></i> <span>Temperature</span>
                                 </button>
-                                <button class="layer-btn" data-layer="rain" onclick="setWindyLayer('rain')" title="Rain & Radar">
-                                    <i class="fa-solid fa-cloud-showers-heavy"></i> <span data-i18n="weather.layerRain">Rain</span>
+                                <button class="layer-btn" data-layer="rain" onclick="setWindyLayer('rain')" title="Rain & Precipitation">
+                                    <i class="fa-solid fa-cloud-showers-heavy"></i> <span>Rain</span>
                                 </button>
                                 <button class="layer-btn" data-layer="clouds" onclick="setWindyLayer('clouds')" title="Cloud Cover">
-                                    <i class="fa-solid fa-cloud"></i> <span data-i18n="weather.layerClouds">Clouds</span>
+                                    <i class="fa-solid fa-cloud"></i> <span>Clouds</span>
                                 </button>
-                                <button class="layer-btn" data-layer="pressure" onclick="setWindyLayer('pressure')" title="Pressure MSL">
-                                    <i class="fa-solid fa-gauge-high"></i> <span data-i18n="weather.layerPressure">Pressure</span>
-                                </button>
-                                <button class="layer-btn" data-layer="humidity" onclick="setWindyLayer('humidity')" title="Relative Humidity">
-                                    <i class="fa-solid fa-droplet"></i> <span data-i18n="weather.layerHumidity">Humidity</span>
+                                <button class="layer-btn" data-layer="pressure" onclick="setWindyLayer('pressure')" title="Sea Level Pressure">
+                                    <i class="fa-solid fa-gauge-high"></i> <span>Pressure</span>
                                 </button>
                                 
                                 <div class="particles-toggle-row">
                                     <label class="switch-lbl">
                                         <input type="checkbox" id="chkParticleStreamlines" checked onchange="toggleParticlesVisible(this.checked)">
-                                        <span data-i18n="weather.windVectors">Wind Vectors</span>
+                                        <span>Wind Streamlines</span>
                                     </label>
                                 </div>
                             </div>
 
-                            <!-- Active Layer Color Legend Bar (Bottom Edge) -->
-                            <div class="windy-legend-bar glass-card" id="windyLegendBar">
-                                <div class="legend-header">
-                                    <span id="legendTitle">Wind Speed</span>
-                                    <strong id="legendUnit">km/h</strong>
-                                </div>
-                                <div class="legend-color-strip" id="legendColorStrip"></div>
-                                <div class="legend-ticks" id="legendTicks">
-                                    <!-- Dynamic ticks injected via JS -->
-                                </div>
-                            </div>
-
-                            <!-- Bottom 72-Hour Scrubber Bar -->
-                            <div class="windy-bottom-timebar glass-card">
-                                <button class="windy-play-circle" id="windyPlayBtn" onclick="toggleWindyTimelinePlay()" title="Play/Pause Timeline">
+                            <!-- Time Bar & Scrubber (Just above bottom scale) -->
+                            <div class="windy-bottom-timebar glass-card" id="windyTimebar">
+                                <button class="windy-play-red" id="windyPlayBtn" onclick="toggleWindyTimelinePlay()" title="Play/Pause Timeline">
                                     <i class="fa-solid fa-play"></i>
                                 </button>
+
+                                <div class="windy-time-tab" id="windyTimeTab">
+                                    <span class="tab-day" id="windyTabDay">Mon 11</span>
+                                    <strong class="tab-time" id="windyTabTime">12:00</strong>
+                                </div>
+
                                 <div class="timebar-slider-container">
                                     <input type="range" min="0" max="71" value="0" step="1" id="windyTimelineScrubber" oninput="onWindyTimelineScrub(this.value)">
-                                    <div class="timebar-labels-row" id="timebarLabelsRow">
-                                        <!-- Injected by JS -->
-                                    </div>
                                 </div>
-                                <div class="time-badge" id="windyHourBadge">Wed 14:00 (+0h)</div>
+
+                                <div class="tab-next-day" id="windyTabNextDay">Tue 12</div>
+                            </div>
+
+                            <!-- Fixed Bottom Color Scale Bar -->
+                            <div class="windy-bottom-scale-bar" id="windyScaleBar">
+                                <button class="unit-toggle-btn" id="scaleUnitBtn" onclick="cycleActiveLayerUnit()" title="Change Unit">kt</button>
+                                <div class="scale-color-gradient" id="legendColorStrip"></div>
+                                <div class="scale-ticks-row" id="legendTicks">
+                                    <span>0</span><span>5</span><span>10</span><span>20</span><span>30</span><span>40</span><span>60</span>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Point Click Weather Side Drawer / Popup -->
+                        <!-- Point Click Weather Side Drawer / Popup Card -->
                         <div class="point-weather-drawer glass-card hidden" id="pointWeatherDrawer">
                             <div class="drawer-header flex-between">
                                 <div>
-                                    <h3 id="ptLocationName">Thanjavur, Tamil Nadu</h3>
-                                    <small id="ptCoords" class="text-secondary">10.7870° N, 79.1378° E</small>
+                                    <h3 id="ptLocationName" class="text-white">Location</h3>
+                                    <small id="ptCoords" class="text-white-50">0.00° N, 0.00° E</small>
                                 </div>
                                 <button class="btn-close-drawer" onclick="closePointWeatherDrawer()"><i class="fa-solid fa-xmark"></i></button>
                             </div>
@@ -573,34 +565,33 @@
                             <div class="drawer-body">
                                 <div class="pt-metrics-hero">
                                     <div class="pt-hero-left">
-                                        <span class="pt-temp-big" id="ptTemp">31.1°C</span>
-                                        <span class="pt-feels" id="ptFeelsLike">Feels like 34.5°C</span>
+                                        <span class="pt-weather-emoji" id="ptEmoji">☀️</span>
+                                        <span class="pt-temp-big text-white" id="ptTemp">31°C</span>
                                     </div>
                                     <div class="pt-hero-right">
-                                        <div class="pt-wind-badge" id="ptWindBadge">
+                                        <div class="pt-wind-badge text-white" id="ptWindBadge">
                                             <i class="fa-solid fa-location-arrow wind-arrow" id="ptWindArrow"></i>
-                                            <span id="ptWindVal">14.5 km/h</span>
+                                            <span id="ptWindVal">14 kt</span>
                                         </div>
-                                        <small id="ptGusts">Gusts: 21.0 km/h</small>
+                                        <small id="ptGusts" class="text-white-50">Gusts: 21 kt</small>
                                     </div>
                                 </div>
 
                                 <div class="pt-metrics-grid mt-3">
-                                    <div class="pt-m-card"><i class="fa-solid fa-cloud-rain text-info"></i><span>Rain Prob:</span><strong id="ptRainProb">15%</strong></div>
-                                    <div class="pt-m-card"><i class="fa-solid fa-droplet text-primary"></i><span>Precipitation:</span><strong id="ptRainSum">0.0 mm</strong></div>
-                                    <div class="pt-m-card"><i class="fa-solid fa-water text-cyan"></i><span>Humidity:</span><strong id="ptHumidity">68%</strong></div>
-                                    <div class="pt-m-card"><i class="fa-solid fa-cloud text-secondary"></i><span>Cloud Cover:</span><strong id="ptClouds">25%</strong></div>
-                                    <div class="pt-m-card"><i class="fa-solid fa-gauge-high text-warning"></i><span>Pressure MSL:</span><strong id="ptPressure">1012.4 hPa</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-cloud-rain text-info"></i><span class="lbl">Rain:</span><strong id="ptRainSum" class="val">0.0 mm</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-cloud text-light"></i><span class="lbl">Clouds:</span><strong id="ptClouds" class="val">25%</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-droplet text-cyan"></i><span class="lbl">Humidity:</span><strong id="ptHumidity" class="val">68%</strong></div>
+                                    <div class="pt-m-card"><i class="fa-solid fa-gauge-high text-warning"></i><span class="lbl">Pressure:</span><strong id="ptPressure" class="val">1012 hPa</strong></div>
                                 </div>
 
                                 <!-- 24-Hour Hourly Timeline Strip -->
-                                <div class="pt-section-title mt-4" data-i18n="weather.hourlyTitle">24-Hour Hourly Forecast</div>
+                                <div class="pt-section-title mt-4 text-white">24-Hour Hourly Forecast</div>
                                 <div class="pt-hourly-scroll" id="ptHourlyScroll">
                                     <!-- Injected by JS -->
                                 </div>
 
                                 <!-- 5-Day Daily Forecast List -->
-                                <div class="pt-section-title mt-4" data-i18n="weather.dailyTitle">5-Day Forecast</div>
+                                <div class="pt-section-title mt-4 text-white">5-Day Forecast</div>
                                 <div class="pt-daily-list" id="ptDailyList">
                                     <!-- Injected by JS -->
                                 </div>
